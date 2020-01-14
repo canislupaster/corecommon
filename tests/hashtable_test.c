@@ -1,7 +1,7 @@
 #include "../src/hashtable.c"
 
-#include "stdio.h"
-#include "time.h"
+#include <stdio.h>
+#include <time.h>
 
 static char *rand_string(char *str, unsigned long size)
 {

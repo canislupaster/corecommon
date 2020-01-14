@@ -49,7 +49,6 @@ typedef struct {
 object* object_new(state* state_) {
 	object* obj = heap(sizeof(object));
 	obj->object_id = state_->current->sorted_objects.length;
-	vector_pushcpy(&state_->current->sorted_objects, &obj);
 
 	obj->file = state_->current;
 	obj->deps = vector_new(sizeof(char*));
@@ -59,6 +58,11 @@ object* object_new(state* state_) {
 	state_->deps = &obj->deps;
 
 	return obj;
+}
+
+void object_push(state* state_, char* name, object* obj) {
+	vector_pushcpy(&state_->current->sorted_objects, &obj);
+	map_insertcpy(&state_->current->objects, &name, &obj);
 }
 
 typedef struct {
@@ -508,7 +512,12 @@ object* parse_object(state* state, object* super, int static_) {
 
 		char* path = prefix(token_str(state, parse_string(state)), dirname(state->path));
 		
-		FILE* file = fopen(path, "a");
+		FILE* file = fopen(path, "r");
+		if (!file) {
+			free(path);
+			return NULL;
+		}
+		
 		fclose(file);
 		
 		path = realpath(path, NULL);
@@ -543,6 +552,7 @@ object* parse_object(state* state, object* super, int static_) {
 		skip_sep(state);
 	} else if (token_eq(first, "enum")) {
 		obj = super ? super : object_new(state); //choose object to reference depending on superior object
+		obj->declaration = NULL; //for use when anonymous enums spread
 
 		name = NULL; //anonymous default
 		if (!parse_peek_brace(state))
@@ -551,7 +561,7 @@ object* parse_object(state* state, object* super, int static_) {
 		if (parse_start_brace(state)) {
 			while (!parse_end_brace(state)) {
 				char* str = token_str(state, parse_token(state));
-				map_insertcpy(&state->current->objects, &str, &obj);
+				object_push(state, str, obj);
 			}
 		} else if (name) {
 			add_dep(state, name);
@@ -602,7 +612,7 @@ object* parse_object(state* state, object* super, int static_) {
 
 	//superior object means that there is already an object that encapsulates this one
 	if (obj && name && !super && !static_) {
-		map_insertcpy(&state->current->objects, &name, &obj);
+		object_push(state, name, obj);
 	}
 
 	if (obj) {
@@ -670,7 +680,7 @@ object* parse_global_object(state* state) {
 	}
 
 	state->deps = old_deps;
-	if (!static_) map_insertcpy(&state->current->objects, &name, &obj);
+	if (!static_) object_push(state, name, obj);
 	return obj;
 }
 
@@ -794,14 +804,20 @@ int main(int argc, char** argv) {
 	// PARSE STEP: GO THROUGH ALL FILES AND PARSE OBJECTS N STUFF
 	for (int i = 1; i < argc; i++) {
 		char* path = argv[i];
-		if (strcmp(path, "--pub")) {
+		if (strcmp(path, "--pub")==0) {
 			pub = 1;
+
+			continue;
 		}
+		
+		char* new_path = realpath(path, NULL);
 
 		tinydir_file file;
-		tinydir_file_open(&file, path);
+		tinydir_file_open(&file, new_path);
 
 		recurse_add_file(&state_, file);
+
+		free(new_path);
 	}
 
 	//LINK STEP: PUBLISH DEPS
@@ -865,7 +881,9 @@ int main(int argc, char** argv) {
 		vector_iterator ordered_iter = vector_iterate(&gen_this->sorted_objects);
 		while (vector_next(&ordered_iter)) {
 			object* ordered_obj = *(object**) ordered_iter.x;
-			if (!pub && !ordered_obj->pub) continue;
+
+			if ((!pub && !ordered_obj->pub)
+				|| !ordered_obj->declaration) continue;
 			
 			vector_iterator inc_iter = vector_iterate(&ordered_obj->include_deps);
 			while (vector_next(&inc_iter)) {
@@ -883,6 +901,6 @@ int main(int argc, char** argv) {
 			fprintf(handle, "\n");
 		}
 
-		fclose(handle);
+		// fclose(handle);
 	}
 }

@@ -85,6 +85,11 @@
         "*.tcc": "c",
         "cinttypes": "c",
         "cstdbool": "c",
-        "str.h": "c"
+        "str.h": "c",
+        "util.h": "c",
+        "siphash.h": "c",
+        "hashtable.h": "c",
+        "time.h": "c",
+        "stdio.h": "c"
     }
 }
