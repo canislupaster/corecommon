@@ -20,6 +20,7 @@ static struct {
 }
 		ALLOCATIONS = {.initialized=0};
 
+#if BUILD_DEBUG
 void memcheck_init() {
 	if (!ALLOCATIONS.initialized) {
 		ALLOCATIONS.alloc_map = map_new();
@@ -27,6 +28,7 @@ void memcheck_init() {
 		ALLOCATIONS.initialized = 1;
 	}
 }
+#endif
 
 void drop(void* ptr) {
 	free(ptr);
@@ -62,7 +64,9 @@ void* heap(size_t size) {
 		abort();
 	}
 
+#if BUILD_DEBUG
 	if (ALLOCATIONS.initialized) map_insertcpy(&ALLOCATIONS.alloc_map, &res, &tr);
+#endif
 
 	return res;
 }
@@ -97,6 +101,7 @@ void* resize(void* ptr, size_t size) {
 	return res;
 }
 
+#if BUILD_DEBUG
 void memcheck() {
 	if (!ALLOCATIONS.initialized) return;
 
@@ -114,3 +119,4 @@ void memcheck() {
 	map_free(&ALLOCATIONS.alloc_map);
 	ALLOCATIONS.initialized = 0;
 }
+#endif

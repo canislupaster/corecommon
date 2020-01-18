@@ -1,16 +1,11 @@
 // Automatically generated header.
 
 #pragma once
-#include <string.h>
-
 #include <stdint.h>
-
+#include <string.h>
 #include <emmintrin.h>
-
 #define CONTROL_BYTES 16
-
 #define DEFAULT_BUCKETS 2
-
 typedef struct {
 	uint8_t control_bytes[CONTROL_BYTES];
 } bucket;
@@ -68,15 +63,19 @@ uint64_t hash_ptr(void** x);
 int compare_string(char** left, char** right);
 int compare_ulong(unsigned long* left, unsigned long* right);
 int compare_ptr(void** left, void** right);
-long map_bucket_size(map_t* map);
+unsigned long map_bucket_size(map_t* map);
 map_t map_new();
 void map_configure(map_t* map, unsigned long size);
 void map_configure_string_key(map_t* map, unsigned long size);
 void map_configure_ulong_key(map_t* map, unsigned long size);
 void map_configure_ptr_key(map_t* map, unsigned long size);
 int map_load_factor(map_t* map);
+#if BUILD_DEBUG
 uint16_t mask(bucket* bucket, uint8_t h2);
+#endif
+#if !(BUILD_DEBUG)
 uint16_t mask(bucket* bucket, uint8_t h2);
+#endif
 map_iterator map_iterate(map_t* map);
 int map_next(map_iterator* iterator);
 extern uint16_t MAP_PROBE_EMPTY;

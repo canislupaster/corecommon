@@ -2,7 +2,6 @@
 
 #pragma once
 #include <stdlib.h>
-
 typedef struct {
 	unsigned long size;
 
@@ -23,6 +22,7 @@ void* vector_pushcpy(vector_t* vec, void* x);
 int vector_pop(vector_t* vec);
 void* vector_popcpy(vector_t* vec);
 int vector_remove(vector_t* vec, unsigned long i);
+int vector_remove_element(vector_t* vec, char* x);
 void* vector_get(vector_t* vec, unsigned long i);
 void* vector_insert(vector_t* vec, unsigned long i);
 void* vector_insertcpy(vector_t* vec, unsigned long i, void* x);

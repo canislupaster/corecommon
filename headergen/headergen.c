@@ -56,6 +56,8 @@ object *object_new(state *state_) {
   obj->deps = vector_new(sizeof(char *));
   obj->include_deps = vector_new(sizeof(char *));
   obj->pub = 0;
+  
+  vector_cpy(&state_->if_stack, &obj->ifs);
 
   return obj;
 }
@@ -72,8 +74,8 @@ void object_ref(state *state_, char *name, object *obj) {
 }
 
 void object_push(state *state_, char *name, object *obj) {
+  vector_pushcpy(&state_->current->sorted_objects, &obj);
   object_ref(state_, name, obj);
-  map_insertcpy(&state_->current->objects, &name, &obj);
 }
 
 typedef struct {
@@ -127,9 +129,6 @@ void parse_define(state *state) {
       state->file++;
     state->file++;
   }
-
-  if (*state->file == '\n')
-    state->file++;
 }
 
 int skip_word(state *state, char *word) {
@@ -812,7 +811,7 @@ void add_file(state *state, char *path, char *filename) {
   file *new_file = map_insert(&state->files, &path).val;
 
   new_file->objects = map_new();
-  map_configure_string_key(&new_file->objects, sizeof(object *));
+  map_configure_string_key(&new_file->objects, sizeof(vector_t));
   new_file->sorted_objects = vector_new(sizeof(object *));
 
   new_file->deps = vector_new(sizeof(char *));
@@ -906,10 +905,19 @@ int main(int argc, char **argv) {
       obj->deps = vector_new(sizeof(char *));
 
       while (vector_next(&dep_iter)) {
-        object **dep_decl = map_find(&this->objects, dep_iter.x);
-        if (!dep_decl || (*dep_decl)->object_id > obj->object_id) {
-          vector_pushcpy(&obj->deps, dep_iter.x);
+        vector_t* dep_decls = map_find(&this->objects, dep_iter.x);
+        
+        //if an object in the same file exists and comes before this object, then remove dependency
+        if (dep_decls) {
+          vector_iterator dep_decl_iter = vector_iterate(dep_decls);
+          while (vector_next(&dep_decl_iter)) {
+            if ((*(object**)dep_decl_iter.x)->object_id < obj->object_id) {
+              continue;
+            }
+          }
         }
+        
+        vector_pushcpy(&obj->deps, dep_iter.x); //otherwise keep dependency
       }
 
       vector_free(&old_deps);
@@ -996,6 +1004,32 @@ int main(int argc, char **argv) {
       if ((!pub && !ordered_obj->pub) || !ordered_obj->declaration)
         continue;
 
+      // remove old ifs
+      int remove_to = 0;
+
+      vector_iterator file_if_iter = vector_iterate(&if_stack);
+      while (vector_next(&file_if_iter)) {
+				char** obj_if = vector_get(&ordered_obj->ifs, file_if_iter.i - 1);
+
+        if (!obj_if || strcmp(*obj_if, *(char **)file_if_iter.x) != 0) {
+					remove_to = file_if_iter.i-1;
+					break;
+        }
+      }
+
+			for (int i=if_stack.length-remove_to; i > 0; i--) {
+				vector_pop(&if_stack);
+				fprintf(handle, "#endif\n");
+			}
+
+      vector_iterator if_iter = vector_iterate(&ordered_obj->ifs);
+      if_iter.i = remove_to; //add from point at which stack is divergent
+
+      while (vector_next(&if_iter)) {
+        fprintf(handle, "#if %s\n", *(char**)if_iter.x);
+        vector_pushcpy(&if_stack, if_iter.x);
+      }
+
       vector_iterator inc_iter = vector_iterate(&ordered_obj->include_deps);
       while (vector_next(&inc_iter)) {
         // write include if doesnt exist
@@ -1007,38 +1041,17 @@ int main(int argc, char **argv) {
         }
       }
 
-      // remove old ifs
-      int remove_to = 0;
-
-      vector_iterator file_if_iter = vector_iterate(&if_stack);
-      while (vector_next(&file_if_iter)) {
-				char** obj_if = vector_get(&ordered_obj->ifs, file_if_iter.i - 1);
-
-        if (!obj_if || strcmp(*obj_if, *(char **)file_if_iter.x) != 0) {
-					remove_to = file_if_iter.i;
-					break;
-        }
-      }
-
-			for (int i=remove_to; i > 0; i--) {
-				vector_pop(&state_.if_stack);
-				fprintf(handle, "#endif\n");	
-			}
-
-      vector_iterator if_iter = vector_iterate(&ordered_obj->ifs);
-			if_iter.i = remove_to-1; //add from point at which stack is divergent
-
-      while (vector_next(&if_iter)) {
-        fprintf(handle, "#if %s", *(char**)if_iter.x);
-				vector_pushcpy(&if_stack, if_iter.x);
-      }
-
       fwrite(ordered_obj->declaration, strlen(ordered_obj->declaration), 1,
              handle);
 
       fprintf(handle, "\n");
     }
 
-    // fclose(handle);
+    while (if_stack.length>0) {
+      vector_pop(&if_stack);
+      fprintf(handle, "#endif\n");
+    }
+
+    fclose(handle);
   }
 }

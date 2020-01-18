@@ -1,5 +1,8 @@
 project(corecommon)
 
+if (CMAKE_BUILD_TYPE MATCHES Debug)
+    add_compile_definitions(BUILD_DEBUG)
+endif ()
 
 file(GLOB SRC ./src/*.h ./src/*.c)
 
