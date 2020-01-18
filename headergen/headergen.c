@@ -16,6 +16,8 @@ typedef struct {
 	vector_t deps; //char*
 	vector_t include_deps;
 
+	vector_t ifs;
+
 	int pub;
 } object;
 
@@ -39,6 +41,7 @@ typedef struct {
 	char* path;
 	char* file;
 	vector_t tokens;
+	vector_t if_stack; //stack of #ifs to copy to objects
 
 	file* current;
 	vector_t* deps;
@@ -500,34 +503,7 @@ object* parse_object(state* state, object* super, int static_) {
 	if (!first) return NULL;
 	char* start = first->start;
 
-	//modified and unmodified type-skipper
-	if (token_eq(first, "#include") && !super) {
-		parse_ws(state);
-		if (*state->file == '<') {
-			parse_define(state);
-			char* str = range(start, state->file);
-			map_insert(&state->current->pub_includes, &str);
-			return NULL;
-		}
-
-		char* path = prefix(token_str(state, parse_string(state)), dirname(state->path));
-		
-		FILE* file = fopen(path, "r");
-		if (!file) {
-			free(path);
-			return NULL;
-		}
-		
-		fclose(file);
-		
-		path = realpath(path, NULL);
-
-		vector_pushcpy(&state->current->includes, &path);
-
-		char* str = range(start, state->file);
-		vector_pushcpy(&state->current->raw_includes, &str);
-		return NULL;
-	} else if (token_eq(first, "#define") && !super) {
+	if (token_eq(first, "#define") && !super) {
 		obj = object_new(state);
 		name = token_str(state, parse_token(state));
 
@@ -623,14 +599,66 @@ object* parse_object(state* state, object* super, int static_) {
 }
 
 object* parse_global_object(state* state) {
-	vector_t* old_deps = state->deps;
-	object* obj = object_new(state);
-
 	int static_ = 0;
 
 	parse_skip(state);
 	if (skip_word(state, "static")) {
 		static_ = 1;
+	}
+
+	char* start = state->file;
+	if (skip_word(state, "#include")) {
+		parse_ws(state);
+		if (*state->file == '<') {
+			parse_define(state);
+			char* str = range(start, state->file);
+			map_insert(&state->current->pub_includes, &str);
+			return NULL;
+		}
+
+		char* path = prefix(token_str(state, parse_string(state)), dirname(state->path));
+		
+		FILE* file = fopen(path, "r");
+		if (!file) {
+			free(path);
+			return NULL;
+		}
+		
+		fclose(file);
+		
+		path = realpath(path, NULL);
+
+		vector_pushcpy(&state->current->includes, &path);
+
+		char* str = range(start, state->file);
+		vector_pushcpy(&state->current->raw_includes, &str);
+		
+		return NULL;
+
+	} else if (skip_word(state, "#if")) {
+		parse_ws(state);
+		char* ifstart = state->file;
+
+		parse_define(state);
+
+		char* cond = range(ifstart, state->file);
+		vector_pushcpy(&state->if_stack, &cond);
+
+		return NULL;
+
+	} else if (skip_word(state, "#else")) {
+
+		char* cond = *(char**)vector_get(&state->if_stack, state->if_stack.length-1);
+		char* new_cond = heapstr("!(%s)", cond);
+
+		vector_pop(&state->if_stack); //pop old if
+		vector_pushcpy(&state->if_stack, &new_cond); //pop new else
+
+		return NULL;
+
+	} else if (skip_word(state, "#endif")) {
+		vector_pop(&state->if_stack);
+		return NULL;
 	}
 
 	char* start = state->file;
@@ -762,6 +790,7 @@ void add_file(state* state, char* path, char* filename) {
 	state->parens = 0;
 
 	state->tokens = vector_new(sizeof(token));
+	state->if_stack = vector_new(sizeof(char*));
 
 	state->current = new_file;
 	state->deps = NULL;

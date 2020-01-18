@@ -70,19 +70,34 @@ void* vector_popcpy(vector_t* vec) {
 
 /// returns 1 if removed successfully
 int vector_remove(vector_t* vec, unsigned long i) {
-	if (i == vec->length - 1) {
-		vec->length--;
-
-		vec->data = resize(vec->data, vec->size * vec->length);
-	}
-
 	//sanity checks
 	if (!vec->data || i >= vec->length)
 		return 0;
 
+	vec->length--;
+
+	vec->data = resize(vec->data, vec->size * vec->length);
+
 	memcpy(vec->data + i * vec->size,
 				 vec->data + (i + 1) * vec->size,
 				 (vec->length - 1 - i) * vec->size);
+	return 1;
+}
+
+/// returns 1 if removed successfully
+int vector_remove_element(vector_t* vec, char* x) {
+	//sanity checks
+	if (!vec->data || x > vec->size * vec->length + vec->data)
+		return 0;
+
+	vec->length--;
+
+	vec->data = resize(vec->data, vec->size * vec->length);
+
+	memcpy(x,
+				 x + vec->size,
+				 (vec->data + vec->length * vec->size) - (x + vec->size));
+				 
 	return 1;
 }
 
