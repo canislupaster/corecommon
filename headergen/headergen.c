@@ -44,7 +44,6 @@ typedef struct {
 	vector_t if_stack; //stack of #ifs to copy to objects
 
 	file* current;
-	vector_t* deps;
 
 	map_t files;
 } state;
@@ -57,8 +56,6 @@ object* object_new(state* state_) {
 	obj->deps = vector_new(sizeof(char*));
 	obj->include_deps = vector_new(sizeof(char*));
 	obj->pub = 0;
-
-	state_->deps = &obj->deps;
 
 	return obj;
 }
@@ -464,10 +461,6 @@ token* parse_string(state* state) {
 	}
 }
 
-void add_dep(state* state, char* dep) {
-	vector_pushcpy(state->deps, &dep);
-}
-
 object* parse_object(state* state, object* super, int static_);
 
 int skip_type(state* state) {
@@ -489,14 +482,12 @@ int skip_type(state* state) {
 }
 
 object* parse_object(state* state, object* super, int static_) {
-	if (super && skip_type(state)) {
+	if (skip_type(state)) {
 		return NULL;
 	}
 
 	object* obj = NULL;
 	char* name = NULL;
-
-	vector_t* old_deps = state->deps;
 
 	token* first = parse_token_braced(state);
 
@@ -515,14 +506,10 @@ object* parse_object(state* state, object* super, int static_) {
 		return NULL;
 
 	} else if (token_eq(first, "typedef")) {		
-		obj = parse_object(state, NULL, static_); //parse thing inside
+		obj = object_new(state);
+		parse_object(state, obj, static_); //parse thing inside
 
 		name = token_str(state, parse_token(state));
-
-		if (!obj) {
-			//probably a fwd declaration / raw dep, make empty obj
-			obj = object_new(state);
-		}
 
 		obj->declaration = affix(range(start, state->file), ";");
 		skip_sep(state);
@@ -534,14 +521,11 @@ object* parse_object(state* state, object* super, int static_) {
 		if (!parse_peek_brace(state))
 			name = prefix(token_str(state, parse_token(state)), "enum ");
 
-		if (parse_start_brace(state)) {
+		if (parse_start_brace(state)) { //otherwise fwd decl
 			while (!parse_end_brace(state)) {
 				char* str = token_str(state, parse_token(state));
-				object_push(state, str, obj);
+				map_insertcpy(&state->current->objects, &str, &obj);
 			}
-		} else if (name) {
-			add_dep(state, name);
-			return NULL;
 		}
 
 		//skip decl if superior object exists
@@ -557,7 +541,7 @@ object* parse_object(state* state, object* super, int static_) {
 			name = prefix(token_str(state, parse_token(state)), kind_prefix);
 		}
 
-		if (parse_start_brace(state)) {
+		if (parse_start_brace(state)) { //otherwise fwd decl
 			obj = super ? super : object_new(state); //used so lower-order objects reference most superior object
 
 			while (!parse_end_brace(state)) {
@@ -574,17 +558,12 @@ object* parse_object(state* state, object* super, int static_) {
 			}
 
 			if (!super) obj->declaration = affix(range(start, state->file), ";");
-		} else if (name) {
-			add_dep(state, name);
-			return NULL;
 		}
 	} else {
 		char* str = token_str(state, first);
-		add_dep(state, str);
+		if (super) vector_pushcpy(&super->deps, &str);
 		return NULL;
 	}
-
-	state->deps = old_deps;
 
 	//superior object means that there is already an object that encapsulates this one
 	if (obj && name && !super && !static_) {
@@ -674,7 +653,10 @@ object* parse_global_object(state* state) {
 	char* after_name = state->file;
 	parse_ws(state);
 
+	object* obj;
+
 	if (*state->file == '=') { //global
+		obj = object_new(state);
 		obj->declaration = heapstr("extern %s;", range(start, after_name));
 
 		while (!parse_sep(state)) {
@@ -686,6 +668,8 @@ object* parse_global_object(state* state) {
 		skip_sep(state);
 
 	} else if (parse_start_paren(state)) { //function
+		obj = object_new(state);
+		
 		while (!parse_end_paren(state)) {
 			parse_object(state, obj, static_);
 			if (!parse_name(state)) parse_token(state); //parse argument name
@@ -707,7 +691,6 @@ object* parse_global_object(state* state) {
 		return ty;
 	}
 
-	state->deps = old_deps;
 	if (!static_) object_push(state, name, obj);
 	return obj;
 }
@@ -793,7 +776,6 @@ void add_file(state* state, char* path, char* filename) {
 	state->if_stack = vector_new(sizeof(char*));
 
 	state->current = new_file;
-	state->deps = NULL;
 
 	while (*state->file) {
 		parse_global_object(state);
@@ -825,7 +807,7 @@ void recurse_add_file(state* state, tinydir_file file) {
 }
 
 int main(int argc, char** argv) {
-	state state_ = {.files=map_new(), .deps=NULL};
+	state state_ = {.files=map_new()};
 	map_configure_string_key(&state_.files, sizeof(file));
 
 	int pub = 0; //--pub makes everything public
@@ -849,17 +831,42 @@ int main(int argc, char** argv) {
 		free(new_path);
 	}
 
-	//LINK STEP: PUBLISH DEPS
+	//LINK STEP: LINK AND PUBLISH DEPS
 	map_iterator file_iter = map_iterate(&state_.files);
 	while (map_next(&file_iter)) {
 		file* this = file_iter.x;
+		
+		//remove declared dependencies
+		vector_iterator obj_iter = vector_iterate(&this->sorted_objects);
+		while (vector_next(&obj_iter)) {
+			object* obj = *(object**)obj_iter.x;
+
+			//drain dependencies
+			vector_t old_deps = obj->deps;
+			vector_iterator dep_iter = vector_iterate(&old_deps);
+			
+			obj->deps = vector_new(sizeof(char*));
+
+			while (vector_next(&dep_iter)) {
+				object** dep_decl = map_find(&this->objects, dep_iter.x);
+				if (!dep_decl || (*dep_decl)->object_id > obj->object_id) {
+					vector_pushcpy(&obj->deps, dep_iter.x);
+				}
+			}
+
+			vector_free(&old_deps);
+		}
 		
 		//search for dependencies in file includes
 		vector_iterator inc_iter = vector_iterate(&this->includes);
 
 		while (vector_next(&inc_iter)) {
 			file* inc_file = map_find(&state_.files, inc_iter.x);
-			if (!inc_file) continue;
+			if (!inc_file) {
+				//if include does not reference a file that is searched, make public
+				map_insert(&this->pub_includes, vector_get(&this->raw_includes, inc_iter.i-1));
+				continue;
+			}
 
 			vector_iterator obj_iter = vector_iterate(&this->sorted_objects);
 			while (vector_next(&obj_iter)) {
@@ -877,6 +884,7 @@ int main(int argc, char** argv) {
 				}
 			}
 
+			//private deps
 			vector_iterator dep_iter = vector_iterate(&this->deps);
 			while (vector_next(&dep_iter)) {
 				object** inc_obj = map_find(&inc_file->objects, dep_iter.x);
