@@ -565,7 +565,7 @@ object *parse_object(state *state, object *super, int static_) {
     if (parse_start_brace(state)) { // otherwise fwd decl
       while (!parse_end_brace(state)) {
         char *str = token_str(state, parse_token(state));
-        object_ref(state, name, obj);
+        object_ref(state, str, obj);
       }
     }
 
@@ -647,15 +647,10 @@ object *parse_global_object(state *state) {
     char *path =
         prefix(token_str(state, parse_string(state)), dirname(state->path));
 
-    FILE *file = fopen(path, "r");
-    if (!file) {
-      free(path);
-      return NULL;
-    }
-
-    fclose(file);
+		path[strlen(path) - 1] = 'c';           //.h -> .c for finds and gen
 
     path = realpath(path, NULL);
+		if (!path) return NULL;
 
     vector_pushcpy(&state->current->includes, &path);
 
@@ -802,9 +797,6 @@ void add_file(state *state, char *path, char *filename) {
   fclose(handle);
 
   str[len] = 0;
-
-  path = heapcpy(strlen(path) + 1, path); // copy path for modifications
-  path[strlen(path) - 1] = 'h';           //.c -> .h for finds and gen
 
   fclose(handle);
 
@@ -983,6 +975,10 @@ int main(int argc, char **argv) {
       continue;
 
     char *filename = *(char **)filegen_iter.key;
+		//modify to header
+		filename = heapcpy(strlen(filename)+1, filename);
+		filename[strlen(filename)-1] = 'h'; //.c -> .h
+		filename[strlen(filename)] = 0;
 
     FILE *handle = fopen(filename, "w");
     fprintf(handle, "// Automatically generated header.\n\n#pragma once\n");
