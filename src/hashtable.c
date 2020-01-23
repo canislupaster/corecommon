@@ -166,30 +166,12 @@ int map_load_factor(map_t* map) {
 	return ((double) (map->length) / (double) (map->num_buckets * CONTROL_BYTES)) > 0.5;
 }
 
-#if BUILD_DEBUG
-
-uint16_t mask(bucket* bucket, uint8_t h2) {
-	uint16_t u16 = 0;
-
-	uint16_t cur = 1;
-	for (int i = 0; i < CONTROL_BYTES; i++) {
-		if (bucket->control_bytes[i] == h2)
-			u16 |= cur;
-
-		cur *= 2;
-	}
-
-	return u16;
-}
-
-#else
 uint16_t mask(bucket* bucket, uint8_t h2) {
 	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)bucket->control_bytes);
 
 	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(h2), control_byte_vec);
 	return _mm_movemask_epi8(result);
 }
-#endif
 
 map_iterator map_iterate(map_t* map) {
 	map_iterator iterator = {

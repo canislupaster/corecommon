@@ -70,12 +70,7 @@ void map_configure_string_key(map_t* map, unsigned long size);
 void map_configure_ulong_key(map_t* map, unsigned long size);
 void map_configure_ptr_key(map_t* map, unsigned long size);
 int map_load_factor(map_t* map);
-#if BUILD_DEBUG
 uint16_t mask(bucket* bucket, uint8_t h2);
-#endif
-#if !(BUILD_DEBUG)
-uint16_t mask(bucket* bucket, uint8_t h2);
-#endif
 map_iterator map_iterate(map_t* map);
 int map_next(map_iterator* iterator);
 extern uint16_t MAP_PROBE_EMPTY;

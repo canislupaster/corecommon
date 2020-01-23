@@ -101,6 +101,31 @@ void* resize(void* ptr, size_t size) {
 	return res;
 }
 
+//utility fn
+char* read_file(char* path) {
+	FILE *handle = fopen(path, "rb");
+  if (!handle) {
+    fprintf(stderr, "cannot read %s", path);
+    free(path);
+		
+    return NULL;
+  }
+
+  fseek(handle, 0, SEEK_END);
+  unsigned long len = ftell(handle);
+
+  rewind(handle);
+
+  char *str = heap(len + 1);
+
+  fread(str, len, 1, handle);
+  fclose(handle);
+
+  str[len] = 0;
+
+	return str;
+}
+
 #if BUILD_DEBUG
 void memcheck() {
 	if (!ALLOCATIONS.initialized) return;

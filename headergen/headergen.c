@@ -7,7 +7,14 @@
 #include "../src/hashtable.h"
 #include "../src/util.h"
 #include "../src/vector.h"
-#include "tinydir.h"
+#include "../src/tinydir.h"
+
+typedef struct {
+  enum {
+    if_none, if_def, if_ndef
+  } kind;
+  char* cond;
+} if_t;
 
 typedef struct {
   struct file *file;
@@ -46,6 +53,8 @@ typedef struct {
   file *current;
 
   map_t files;
+
+  vector_t deps;
 } state;
 
 object *object_new(state *state_) {
@@ -610,6 +619,7 @@ object *parse_object(state *state, object *super, int static_) {
     char *str = token_str(state, first);
     if (super)
       vector_pushcpy(&super->deps, &str);
+    vector_pushcpy(&state->deps, &str);
     return NULL;
   }
 
@@ -624,6 +634,15 @@ object *parse_object(state *state, object *super, int static_) {
   }
 
   return NULL;
+}
+
+char* get_cond(state* state) {
+  parse_ws(state);
+  char *ifstart = state->file;
+
+  parse_define(state);
+
+  return range(ifstart, state->file);
 }
 
 object *parse_global_object(state *state) {
@@ -659,20 +678,44 @@ object *parse_global_object(state *state) {
 
     return NULL;
   } else if (skip_word(state, "#if")) {
-    parse_ws(state);
-    char *ifstart = state->file;
-
-    parse_define(state);
-
-    char *cond = range(ifstart, state->file);
-    vector_pushcpy(&state->if_stack, &cond);
-
+    
+    vector_pushcpy(&state->if_stack, &(if_t){.kind=if_none, .cond=get_cond(state)});
     return NULL;
+
+  } else if (skip_word(state, "#ifdef")) {
+    
+    vector_pushcpy(&state->if_stack, &(if_t){.kind=if_def, .cond=get_cond(state)});
+    return NULL;
+    
+  } else if (skip_word(state, "#ifndef")) {
+    
+    vector_pushcpy(&state->if_stack, &(if_t){.kind=if_ndef, .cond=get_cond(state)});
+    return NULL;
+
   } else if (skip_word(state, "#else")) {
 
-    char *cond =
+    if_t *cond =
         *(char **)vector_get(&state->if_stack, state->if_stack.length - 1);
-    char *new_cond = heapstr("!(%s)", cond);
+
+    if_t new_cond;
+
+    switch (cond->kind) {
+      case if_none: {
+        new_cond.kind = if_none;
+        new_cond.cond = heapstr("!(%s)", cond);
+
+        break;
+      };
+      case if_def: {
+        new_cond.kind = if_ndef;
+        new_cond.cond = cond->cond;
+        break;
+      };
+      case if_ndef: {
+        new_cond.kind = if_def;
+        new_cond.cond = cond->cond;
+      }
+    }
 
     vector_pop(&state->if_stack);                // pop old if
     vector_pushcpy(&state->if_stack, &new_cond); // pop new else
@@ -682,6 +725,8 @@ object *parse_global_object(state *state) {
     vector_pop(&state->if_stack);
     return NULL;
   }
+
+  vector_clear(&state->deps); //reset deps (instead of allocating a new object and using super, we can just use a dep buffer in state)
 
   object *ty = parse_object(state, NULL, static_);
   char *reset = state->file; // reset to ty if not a global variable/function
@@ -699,11 +744,12 @@ object *parse_global_object(state *state) {
 
   if (*state->file == '=') { // global
     obj = object_new(state);
+    vector_cpy(&state->deps, &obj->deps);
+
     obj->declaration = heapstr("extern %s;", range(start, after_name));
 
     while (!parse_sep(state)) {
-      while (skip_type(state))
-        ;
+      while (skip_type(state));
       char *str = token_str(state, parse_token_braced(state));
       vector_pushcpy(&state->current->deps, &str);
     }
@@ -711,6 +757,7 @@ object *parse_global_object(state *state) {
     skip_sep(state);
   } else if (parse_start_paren(state)) { // function
     obj = object_new(state);
+    vector_cpy(&state->deps, &obj->deps);
 
     while (!parse_end_paren(state)) {
       parse_object(state, obj, static_);
@@ -822,7 +869,7 @@ void add_file(state *state, char *path, char *filename) {
   state->parens = 0;
 
   state->tokens = vector_new(sizeof(token));
-  state->if_stack = vector_new(sizeof(char *));
+  state->if_stack = vector_new(sizeof(if_t));
 
   state->current = new_file;
 
@@ -991,7 +1038,7 @@ int main(int argc, char **argv) {
       fprintf(handle, "\n");
     }
 
-    vector_t if_stack = vector_new(sizeof(char *));
+    vector_t if_stack = vector_new(sizeof(if_stack));
 
     vector_iterator ordered_iter = vector_iterate(&gen_this->sorted_objects);
     while (vector_next(&ordered_iter)) {
