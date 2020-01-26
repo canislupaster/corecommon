@@ -67,6 +67,12 @@
     HALF_ROUND(v0,v1,v2,v3,13,16);        \
     HALF_ROUND(v2,v1,v0,v3,17,21);
 
+static struct {
+	char initialized;
+	int key[4]; //uint64_t with ints
+}
+	SIPHASH_KEY = {.initialized=0, .key={0, 0, 0, 0}};
+
 uint64_t siphash24(const void* src, unsigned long src_sz, const char key[16]) {
 	const uint64_t* _key = (uint64_t*) key;
 	uint64_t k0 = _le64toh(_key[0]);
@@ -110,4 +116,17 @@ uint64_t siphash24(const void* src, unsigned long src_sz, const char key[16]) {
 	DOUBLE_ROUND(v0, v1, v2, v3);
 	DOUBLE_ROUND(v0, v1, v2, v3);
 	return (v0 ^ v1) ^ (v2 ^ v3);
+}
+
+uint64_t siphash24_keyed(const void* src, unsigned long src_sz) {
+	//set siphash key
+	if (!SIPHASH_KEY.initialized) {
+		SIPHASH_KEY.initialized = 1;
+
+		for (char i = 0; i < 4; i++) {
+			SIPHASH_KEY.key[i] = rand();
+		}
+	}
+
+	siphash24(src, src_sz, SIPHASH_KEY.key);
 }

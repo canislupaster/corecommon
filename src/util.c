@@ -126,6 +126,17 @@ char* read_file(char* path) {
 	return str;
 }
 
+//utility fn
+char *ext(char *filename) {
+  char *dot = "";
+  for (; *filename; filename++) {
+    if (*filename == '.')
+      dot = filename;
+  }
+
+  return dot;
+}
+
 #if BUILD_DEBUG
 void memcheck() {
 	if (!ALLOCATIONS.initialized) return;

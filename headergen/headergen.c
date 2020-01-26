@@ -560,7 +560,9 @@ object *parse_object(state *state, object *super, int static_) {
 
     name = token_str(state, parse_token(state));
 
+    parse_sep(state);
     obj->declaration = affix(range(start, state->file), ";");
+
     skip_sep(state);
   } else if (token_eq(first, "enum")) {
     obj = super ? super : object_new(state); // choose object to reference
@@ -668,13 +670,15 @@ object *parse_global_object(state *state) {
 
 		path[strlen(path) - 1] = 'c';           //.h -> .c for finds and gen
 
-    path = realpath(path, NULL);
-		if (!path) return NULL;
-
-    vector_pushcpy(&state->current->includes, &path);
-
     char *str = range(start, state->file);
-    vector_pushcpy(&state->current->raw_includes, &str);
+
+    path = realpath(path, NULL);
+		if (!path) {
+      map_insert(&state->current->pub_includes, &str);
+    } else {
+      vector_pushcpy(&state->current->includes, &path);
+      vector_pushcpy(&state->current->raw_includes, &str);
+    }
 
     return NULL;
   } else if (skip_word(state, "#if")) {
@@ -694,8 +698,7 @@ object *parse_global_object(state *state) {
 
   } else if (skip_word(state, "#else")) {
 
-    if_t *cond =
-        *(char **)vector_get(&state->if_stack, state->if_stack.length - 1);
+    if_t *cond = vector_get(&state->if_stack, state->if_stack.length - 1);
 
     if_t new_cond;
 
@@ -785,16 +788,6 @@ object *parse_global_object(state *state) {
   if (!static_)
     object_push(state, name, obj);
   return obj;
-}
-
-char *ext(char *filename) {
-  char *dot = "";
-  for (; *filename; filename++) {
-    if (*filename == '.')
-      dot = filename;
-  }
-
-  return dot;
 }
 
 void pub_deps(file *file, object *obj) {
@@ -903,7 +896,7 @@ void recurse_add_file(state *state, tinydir_file file) {
 }
 
 int main(int argc, char **argv) {
-  state state_ = {.files = map_new()};
+  state state_ = {.files = map_new(), .deps = vector_new(sizeof(char*))};
   map_configure_string_key(&state_.files, sizeof(file));
 
   int pub = 0; //--pub makes everything public
@@ -1018,7 +1011,7 @@ int main(int argc, char **argv) {
   map_iterator filegen_iter = map_iterate(&state_.files);
   while (map_next(&filegen_iter)) {
     file *gen_this = filegen_iter.x;
-    if (!gen_this->pub)
+    if (!gen_this->pub && !pub)
       continue;
 
     char *filename = *(char **)filegen_iter.key;
@@ -1052,9 +1045,10 @@ int main(int argc, char **argv) {
 
       vector_iterator file_if_iter = vector_iterate(&if_stack);
       while (vector_next(&file_if_iter)) {
-				char** obj_if = vector_get(&ordered_obj->ifs, file_if_iter.i - 1);
+        if_t* file_if = file_if_iter.x;
+				if_t* obj_if = vector_get(&ordered_obj->ifs, file_if_iter.i - 1);
 
-        if (!obj_if || strcmp(*obj_if, *(char **)file_if_iter.x) != 0) {
+        if (!obj_if || strcmp(obj_if->cond, file_if->cond) != 0 || obj_if->kind != file_if->kind) {
 					remove_to = file_if_iter.i-1;
 					break;
         }
@@ -1069,7 +1063,17 @@ int main(int argc, char **argv) {
       if_iter.i = remove_to; //add from point at which stack is divergent
 
       while (vector_next(&if_iter)) {
-        fprintf(handle, "#if %s\n", *(char**)if_iter.x);
+        if_t* _if = if_iter.x;
+        
+        switch (_if->kind) {
+          case if_none:
+            fprintf(handle, "#if %s\n", _if->cond); break;
+          case if_def:
+            fprintf(handle, "#ifdef %s\n", _if->cond); break;
+          case if_ndef:
+            fprintf(handle, "#ifdef %s\n", _if->cond); break;
+        }
+
         vector_pushcpy(&if_stack, if_iter.x);
       }
 

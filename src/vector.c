@@ -166,6 +166,15 @@ int vector_next(vector_iterator* iter) {
 		return 1;
 }
 
+//same thing without increment
+void* vector_peek(vector_iterator* iter) {
+	if (iter->i > iter->vec->length) {
+		return 0;
+	} else {
+		return iter->vec->data + (iter->rev ? iter->vec->length - 1 - iter->i : iter->i) * iter->vec->size;
+	}
+}
+
 void vector_cpy(vector_t* from, vector_t* to) {
 	*to = *from;
 

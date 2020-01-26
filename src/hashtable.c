@@ -46,12 +46,6 @@ typedef struct {
 
 const char DEFAULT_BUCKET[CONTROL_BYTES] = {0};
 
-static struct {
-	char initialized;
-	int key[4]; //uint64_t with ints
-}
-	SIPHASH_KEY = {.initialized=0, .key={0, 0, 0, 0}};
-
 typedef struct {
 	map_t* map;
 
@@ -82,15 +76,15 @@ static uint8_t make_h2(uint64_t hash) {
 
 /// uses siphash
 uint64_t hash_string(char** x) {
-	return siphash24((uint8_t*) *x, strlen(*x), (char*) SIPHASH_KEY.key);
+	return siphash24_keyed((uint8_t*) *x, strlen(*x));
 }
 
 uint64_t hash_ulong(unsigned long* x) {
-	return siphash24((uint8_t*) x, sizeof(unsigned long), (char*) SIPHASH_KEY.key);
+	return siphash24_keyed((uint8_t*) x, sizeof(unsigned long));
 }
 
 uint64_t hash_ptr(void** x) {
-	return siphash24((uint8_t*) x, sizeof(void*), (char*) SIPHASH_KEY.key);
+	return siphash24_keyed((uint8_t*) x, sizeof(void*));
 }
 
 int compare_string(char** left, char** right) {
@@ -116,15 +110,6 @@ map_t map_new() {
 }
 
 void map_configure(map_t* map, unsigned long size) {
-	//set siphash key
-	if (!SIPHASH_KEY.initialized) {
-		SIPHASH_KEY.initialized = 1;
-
-		for (char i = 0; i < 4; i++) {
-			SIPHASH_KEY.key[i] = rand();
-		}
-	}
-
 	map->size = size + map->key_size;
 
 	unsigned long x = DEFAULT_BUCKETS * map_bucket_size(map);

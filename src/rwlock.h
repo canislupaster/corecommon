@@ -15,3 +15,4 @@ void rwlock_read(rwlock_t* rwlock);
 void rwlock_write(rwlock_t* rwlock);
 void rwlock_unread(rwlock_t* rwlock);
 void rwlock_unwrite(rwlock_t* rwlock);
+void rwlock_free(rwlock_t* rwlock);
