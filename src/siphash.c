@@ -69,7 +69,7 @@
 
 static struct {
 	char initialized;
-	int key[4]; //uint64_t with ints
+	char key[16]; //uint64_t with ints
 }
 	SIPHASH_KEY = {.initialized=0, .key={0, 0, 0, 0}};
 
@@ -123,10 +123,10 @@ uint64_t siphash24_keyed(const void* src, unsigned long src_sz) {
 	if (!SIPHASH_KEY.initialized) {
 		SIPHASH_KEY.initialized = 1;
 
-		for (char i = 0; i < 4; i++) {
-			SIPHASH_KEY.key[i] = rand();
+		for (char i = 0; i < 8; i++) {
+			SIPHASH_KEY.key[i] = (char)rand();
 		}
 	}
 
-	siphash24(src, src_sz, SIPHASH_KEY.key);
+	return siphash24(src, src_sz, SIPHASH_KEY.key);
 }
