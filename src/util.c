@@ -9,6 +9,8 @@
 #include "str.h"
 
 #define TRACE_SIZE 10
+#define MIN(a, b) a < b ? a : b
+#define MAX(a, b) a > b ? a : b
 
 typedef struct {
 	void* stack[TRACE_SIZE];
@@ -75,6 +77,10 @@ void* heapcpy(size_t size, const void* val) {
 	void* res = heap(size);
 	memcpy(res, val, size);
 	return res;
+}
+
+void* heapcpystr(const char* str) {
+	return heapcpy(strlen(str) + 1, str);
 }
 
 /// asprintf but ignore errors and return string (or null if error)

@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdint.h>
 #include <emmintrin.h>
-#include "siphash.h"
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2
 typedef struct {
