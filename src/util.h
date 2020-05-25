@@ -1,12 +1,11 @@
 // Automatically generated header.
 
 #pragma once
+#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdarg.h>
 #include <execinfo.h>
-#include "str.h"
 #define TRACE_SIZE 10
 typedef struct {
 	void* stack[TRACE_SIZE];

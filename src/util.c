@@ -104,10 +104,7 @@ void* resize(void* ptr, size_t size) {
 //utility fn
 char* read_file(char* path) {
 	FILE *handle = fopen(path, "rb");
-  if (!handle) {
-    fprintf(stderr, "cannot read %s", path);
-    free(path);
-		
+  if (!handle) {		
     return NULL;
   }
 

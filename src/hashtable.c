@@ -256,7 +256,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter) {
 	return NULL;
 }
 
-/// returns ptr to key alongside value
+/// returns ptr to value after key
 void* map_find(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
 	map_probe_iterator probe = map_probe(map, key);
 	while (map_probe_next(&probe) && map_probe_empty(&probe) != MAP_PROBE_EMPTY) {

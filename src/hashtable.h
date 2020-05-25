@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdint.h>
 #include <emmintrin.h>
-#include "siphash.h"
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2
 typedef struct {
@@ -56,6 +55,7 @@ extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
 uint64_t hash_ulong(unsigned long* x);
 uint64_t hash_ptr(void** x);
+int compare_string(char** left, char** right);
 int compare_ulong(unsigned long* left, unsigned long* right);
 int compare_ptr(void** left, void** right);
 unsigned long map_bucket_size(map_t* map);
