@@ -2,7 +2,6 @@
 
 #pragma once
 #include <stdlib.h>
-#include "siphash.h"
 #include "threads.h"
 #include "vector.h"
 typedef struct {

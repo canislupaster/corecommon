@@ -25,6 +25,7 @@
 */
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__

@@ -2,6 +2,7 @@
 
 #pragma once
 #include <stdint.h>
+#include <stdlib.h>
 #define ROTATE(x, b) (uint64_t)( ((x) << (b)) | ( (x) >> (64 - (b))) )
 #define HALF_ROUND(a, b, c, d, s, t)            \
     a += b; c += d;                \

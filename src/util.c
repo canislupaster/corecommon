@@ -77,6 +77,10 @@ void* heapcpy(size_t size, const void* val) {
 	return res;
 }
 
+void* heapcpystr(const char* str) {
+	return heapcpy(strlen(str) + 1, str);
+}
+
 /// asprintf but ignore errors and return string (or null if error)
 char* heapstr(const char* fmt, ...) {
 	char* strp = NULL;
@@ -104,10 +108,7 @@ void* resize(void* ptr, size_t size) {
 //utility fn
 char* read_file(char* path) {
 	FILE *handle = fopen(path, "rb");
-  if (!handle) {
-    fprintf(stderr, "cannot read %s", path);
-    free(path);
-		
+  if (!handle) {		
     return NULL;
   }
 

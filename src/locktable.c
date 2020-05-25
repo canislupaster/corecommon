@@ -11,7 +11,7 @@ typedef struct {
 locktable_t locktable_new(unsigned long size) {
   locktable_t locktable;
   locktable.mtxs = vector_new(sizeof(mtx_t));
-  vector_init(&locktable.mtxs, size);
+  vector_stock(&locktable.mtxs, size);
   
   vector_iterator mtx_iter = vector_iterate(&locktable.mtxs);
   while (vector_next(&mtx_iter)) {

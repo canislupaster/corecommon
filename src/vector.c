@@ -22,11 +22,6 @@ vector_t vector_new(unsigned long size) {
 	return vec;
 }
 
-void vector_init(vector_t* vec, unsigned long length) {
-	vec->data = malloc(vec->size * length);
-	vec->length = length;
-}
-
 /// returns ptr to insertion point
 void* vector_push(vector_t* vec) {
 	vec->length++;
@@ -44,6 +39,30 @@ void* vector_pushcpy(vector_t* vec, void* x) {
 	void* pos = vector_push(vec);
 	memcpy(pos, x, vec->size);
 	return pos;
+}
+
+void* vector_stock(vector_t* vec, unsigned long length) {
+	vec->length += length;
+	
+	if (!vec->data)
+		vec->data = heap(vec->size * length);
+	else
+		vec->data = resize(vec->data, vec->size * vec->length);
+
+	return vec->data + (vec->length-length)*vec->size;
+}
+
+void* vector_stockcpy(vector_t* vec, unsigned long length, void* data) {
+	void* pos = vector_stock(vec, length);
+	memcpy(pos, data, length*vec->size);
+	return pos;
+}
+
+void vector_truncate(vector_t* vec, unsigned long length) {
+	if (vec->length > length) {
+		vec->data = resize(vec->data, vec->size*length);
+		vec->length = length;
+	}
 }
 
 int vector_pop(vector_t* vec) {
@@ -166,6 +185,16 @@ int vector_next(vector_iterator* iter) {
 		return 1;
 }
 
+int vector_skip(vector_iterator* iter, unsigned count) {
+	iter->x = iter->vec->data + (iter->rev ? iter->vec->length - 1 - iter->i : iter->i) * iter->vec->size;
+	iter->i += 3;
+
+	if (iter->i > iter->vec->length)
+		return 0;
+	else
+		return 1;
+}
+
 //same thing without increment
 void* vector_peek(vector_iterator* iter) {
 	if (iter->i > iter->vec->length) {
@@ -179,6 +208,10 @@ void vector_cpy(vector_t* from, vector_t* to) {
 	*to = *from;
 
 	to->data = heapcpy(from->size * from->length, from->data);
+}
+
+void vector_add(vector_t* from, vector_t* to) {
+	vector_stockcpy(to, from->length, from->data);
 }
 
 void vector_clear(vector_t* vec) {
