@@ -6,7 +6,7 @@ endif ()
 
 file(GLOB SRC ./src/*.h ./src/*.c)
 
-add_executable(headergen headergen/headergen.c ./src/hashtable.c ./src/vector.c ./src/util.c ./src/siphash.c)
+add_executable(headergen headergen/headergen.c ./src/hashtable.c ./src/vector.c ./src/util.c ./src/siphash.c ./src/rwlock.c)
 
 add_library(corecommon ${SRC})
 

@@ -21,14 +21,22 @@ locktable_t locktable_new(unsigned long size) {
   return locktable;
 }
 
-void locktable_lock(locktable_t* locktable, char* key, size_t key_size) {
-  mtx_t* mtx = vector_get(&locktable->mtxs, siphash24_keyed(key, key_size) % locktable->mtxs.length);
+void locktable_lock(locktable_t* locktable, uint64_t id) {
+  mtx_t* mtx = vector_get(&locktable->mtxs, id % locktable->mtxs.length);
   mtx_lock(mtx);
 }
 
-void locktable_unlock(locktable_t* locktable, char* key, size_t key_size) {
-  mtx_t* mtx = vector_get(&locktable->mtxs, siphash24_keyed(key, key_size) % locktable->mtxs.length);
+void locktable_unlock(locktable_t* locktable, uint64_t id) {
+  mtx_t* mtx = vector_get(&locktable->mtxs, id % locktable->mtxs.length);
   mtx_unlock(mtx);
+}
+
+void locktable_lock_key(locktable_t* locktable, char* key, size_t key_size) {
+  locktable_lock(locktable, siphash24_keyed(key, key_size));
+}
+
+void locktable_unlock_key(locktable_t* locktable, char* key, size_t key_size) {
+  locktable_unlock(locktable, siphash24_keyed(key, key_size));
 }
 
 void locktable_free(locktable_t* locktable) {

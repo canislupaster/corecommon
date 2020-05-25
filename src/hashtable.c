@@ -3,6 +3,7 @@
 #include <emmintrin.h>
 
 #include "util.h"
+#include "rwlock.h"
 #include "siphash.h"
 
 #define CONTROL_BYTES 16
@@ -25,6 +26,8 @@ typedef struct {
 	unsigned long length;
 	unsigned long num_buckets;
 	char* buckets;
+
+	rwlock_t* lock;
 } map_t;
 
 typedef struct {
@@ -104,9 +107,14 @@ unsigned long map_bucket_size(map_t* map) {
 }
 
 map_t map_new() {
-	map_t map = {.length=0, .num_buckets=DEFAULT_BUCKETS};
+	map_t map = {.length=0, .num_buckets=DEFAULT_BUCKETS, .lock=NULL};
 
 	return map;
+}
+
+void map_distribute(map_t* map, unsigned long size) {
+	map->lock = heap(sizeof(rwlock_t));
+	*map->lock = rwlock_new();
 }
 
 void map_configure(map_t* map, unsigned long size) {
@@ -215,7 +223,7 @@ static map_probe_iterator map_probe(map_t* map, void* key) {
 }
 
 static int map_probe_next(map_probe_iterator* probe_iter) {
-	if (probe_iter->probes >= probe_iter->map->num_buckets)
+	if (probe_iter->probes >= probe_iter->map->num_buckets) //should never happen
 		return 0;
 
 	uint64_t idx =
@@ -257,14 +265,21 @@ static void* map_probe_match(map_probe_iterator* probe_iter) {
 }
 
 /// returns ptr to key alongside value
-void* map_find(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
+void* map_find(map_t* map, void* key) {
+	if (map->lock) rwlock_read(map->lock);
+
 	map_probe_iterator probe = map_probe(map, key);
 	while (map_probe_next(&probe) && map_probe_empty(&probe) != MAP_PROBE_EMPTY) {
 		void* x = map_probe_match(&probe);
-		if (x)
+		
+		if (x) {
+			if (map->lock) rwlock_unread(map->lock);
+
 			return x + map->key_size;
+		}
 	}
 
+	if (map->lock) rwlock_unread(map->lock);
 	return NULL;
 }
 
@@ -369,9 +384,11 @@ void map_resize(map_t* map) {
 }
 
 map_insert_result map_insert(map_t* map, void* key) {
-	map_resize(map); //resize before insert to preserve reference integrity
-
 	map_probe_iterator probe = map_probe(map, key);
+
+	if (map->lock) rwlock_write(map->lock);
+
+	map_resize(map); //resize before insert to preserve reference integrity
 
 	map_probe_insert_result insertion = map_probe_insert(&probe);
 
@@ -384,6 +401,8 @@ map_insert_result map_insert(map_t* map, void* key) {
 	insertion.pos += map->key_size;
 
 	map->length++;
+
+	if (map->lock) rwlock_unwrite(map->lock);
 
 	map_insert_result res = {.val=insertion.pos, .exists=insertion.exists};
 	return res;
@@ -406,11 +425,15 @@ void map_cpy(map_t* from, map_t* to) {
 int map_remove(map_t* map, void* key) {
 	map_probe_iterator probe = map_probe(map, key);
 
+	if (map->lock) rwlock_write(map->lock);
+
 	if (map_probe_remove(&probe)) {
 		map->length--;
-		map_resize(map);
+
+		if (map->lock) rwlock_unwrite(map->lock);
 		return 1;
 	} else {
+		if (map->lock) rwlock_unwrite(map->lock);
 		return 0;
 	}
 }
