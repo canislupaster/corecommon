@@ -14,6 +14,8 @@ typedef struct {
 } bucket;
 
 typedef struct {
+	rwlock_t* lock;
+
 	unsigned long key_size;
 	unsigned long size;
 
@@ -23,11 +25,13 @@ typedef struct {
 	/// compare(&left, &right)
 	int (* compare)(void*, void*);
 
+  //free data in map_remove, before references are removed
+	void (*free)(void*);
+
 	unsigned long length;
 	unsigned long num_buckets;
-	char* buckets;
 
-	rwlock_t* lock;
+	char* buckets;
 } map_t;
 
 typedef struct {
@@ -82,6 +86,15 @@ uint64_t hash_string(char** x) {
 	return siphash24_keyed((uint8_t*) *x, strlen(*x));
 }
 
+typedef struct {
+  char* bin;
+  unsigned long size;
+} map_sized_t;
+
+uint64_t hash_sized(map_sized_t* x) {
+	return siphash24_keyed((uint8_t*)x->bin, x->size);
+}
+
 uint64_t hash_ulong(unsigned long* x) {
 	return siphash24_keyed((uint8_t*) x, sizeof(unsigned long));
 }
@@ -94,6 +107,10 @@ int compare_string(char** left, char** right) {
 	return strcmp(*left, *right) == 0;
 }
 
+int compare_sized(map_sized_t* left, map_sized_t* right) {
+	return left->size == right->size && memcmp(left->bin, right->bin, left->size) == 0;
+}
+
 int compare_ulong(unsigned long* left, unsigned long* right) {
 	return *left == *right;
 }
@@ -102,17 +119,27 @@ int compare_ptr(void** left, void** right) {
 	return *left == *right;
 }
 
+void free_string(void* x) {
+  char** str = x;
+  drop(*str);
+}
+
+void free_sized(void* x) {
+  map_sized_t* sized = x;
+  drop(sized->bin);
+}
+
 unsigned long map_bucket_size(map_t* map) {
 	return CONTROL_BYTES + CONTROL_BYTES * map->size;
 }
 
 map_t map_new() {
-	map_t map = {.length=0, .num_buckets=DEFAULT_BUCKETS, .lock=NULL};
+	map_t map = {.length=0, .num_buckets=DEFAULT_BUCKETS, .lock=NULL, .free=NULL};
 
 	return map;
 }
 
-void map_distribute(map_t* map, unsigned long size) {
+void map_distribute(map_t* map) {
 	map->lock = heap(sizeof(rwlock_t));
 	*map->lock = rwlock_new();
 }
@@ -137,8 +164,17 @@ void map_configure_string_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
+void map_configure_sized_key(map_t* map, unsigned long size) {
+	map->key_size = sizeof(map_sized_t);
+
+	map->hash = (uint64_t(*)(void*)) hash_sized;
+	map->compare = (int (*)(void*, void*)) compare_sized;
+
+	map_configure(map, size);
+}
+
 void map_configure_ulong_key(map_t* map, unsigned long size) {
-	map->key_size = sizeof(unsigned long); //string reference is default key
+	map->key_size = sizeof(unsigned long);
 
 	map->hash = (uint64_t(*)(void*)) hash_ulong;
 	map->compare = (int (*)(void*, void*)) compare_ulong;
@@ -147,7 +183,7 @@ void map_configure_ulong_key(map_t* map, unsigned long size) {
 }
 
 void map_configure_ptr_key(map_t* map, unsigned long size) {
-	map->key_size = sizeof(unsigned long); //string reference is default key
+	map->key_size = sizeof(unsigned long);
 
 	map->hash = (uint64_t(*)(void*)) hash_ulong;
 	map->compare = (int (*)(void*, void*)) compare_ulong;
@@ -178,6 +214,8 @@ map_iterator map_iterate(map_t* map) {
 
 //todo: sse
 int map_next(map_iterator* iterator) {
+	if (iterator->map->lock) rwlock_read(iterator->map->lock);
+
 	//while bucket is less than the last bucket in memory
 	while (iterator->bucket < iterator->map->num_buckets) {
 		iterator->bucket_ref = (bucket*) (iterator->map->buckets + map_bucket_size(iterator->map) * iterator->bucket);
@@ -200,11 +238,28 @@ int map_next(map_iterator* iterator) {
 
 		//if filled (we've already updated key, return
 		if (filled) {
+			if (iterator->map->lock)
+				rwlock_unread(iterator->map->lock);
 			return 1;
 		}
 	}
 
+	if (iterator->map->lock) rwlock_unread(iterator->map->lock);
 	return 0;
+}
+
+void map_next_delete(map_iterator* iterator) {
+	if(iterator->map->lock) rwlock_write(iterator->map->lock);
+
+	if (iterator->bucket_ref->control_bytes[iterator->current_c] != 0 
+			&& iterator->bucket_ref->control_bytes[iterator->current_c] != MAP_SENTINEL_H2) {
+
+    if (iterator->map->free) iterator->map->free(iterator->key);
+		iterator->bucket_ref->control_bytes[iterator->current_c] = MAP_SENTINEL_H2;
+		iterator->map->length--;
+	}
+
+	if(iterator->map->lock) rwlock_unwrite(iterator->map->lock);
 }
 
 static map_probe_iterator map_probe_hashed(map_t* map, void* key, uint64_t h1, uint8_t h2) {
@@ -264,8 +319,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter) {
 	return NULL;
 }
 
-/// returns ptr to value after key
-void* map_find(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
+void* map_findkey(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
 	if (map->lock) rwlock_read(map->lock);
 
 	map_probe_iterator probe = map_probe(map, key);
@@ -275,12 +329,19 @@ void* map_find(map_t* map, void* key) { //TODO: if length == stuff seen stop sea
 		if (x) {
 			if (map->lock) rwlock_unread(map->lock);
 
-			return x + map->key_size;
+			return x;
 		}
 	}
 
 	if (map->lock) rwlock_unread(map->lock);
 	return NULL;
+}
+
+// returns ptr to value after key
+void* map_find(map_t* map, void* key) {
+  void* res = map_findkey(map, key);
+  if (res) res += map->key_size;
+  return res;
 }
 
 typedef struct {
@@ -356,7 +417,7 @@ void map_resize(map_t* map) {
 	while (map_load_factor(map)) {
 		//double
 		unsigned long old_num_buckets = map->num_buckets;
-		map->num_buckets = map->num_buckets * 2;
+		map->num_buckets *= 2;
 
 		map->buckets = resize(map->buckets, map->num_buckets * map_bucket_size(map));
 
@@ -396,11 +457,10 @@ map_insert_result map_insert(map_t* map, void* key) {
 	if (!insertion.exists) {
 		//store key
 		memcpy(insertion.pos, key, map->key_size);
+		map->length++;
 	}
 
 	insertion.pos += map->key_size;
-
-	map->length++;
 
 	if (map->lock) rwlock_unwrite(map->lock);
 
@@ -423,11 +483,14 @@ void map_cpy(map_t* from, map_t* to) {
 }
 
 int map_remove(map_t* map, void* key) {
-	map_probe_iterator probe = map_probe(map, key);
-
 	if (map->lock) rwlock_write(map->lock);
 
-	if (map_probe_remove(&probe)) {
+	map_probe_iterator probe = map_probe(map, key);
+
+  void* res = map_probe_remove(&probe);
+	if (res) {
+    if (map->free) map->free(res);
+
 		map->length--;
 
 		if (map->lock) rwlock_unwrite(map->lock);
@@ -440,4 +503,5 @@ int map_remove(map_t* map, void* key) {
 
 void map_free(map_t* map) {
 	drop(map->buckets);
+	if (map->lock) rwlock_free(map->lock);
 }

@@ -2,14 +2,17 @@
 
 #pragma once
 #include <string.h>
-#include <stdint.h>
 #include <emmintrin.h>
+#include <stdint.h>
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2
 typedef struct {
 	uint8_t control_bytes[CONTROL_BYTES];
 } bucket;
+#include "rwlock.h"
 typedef struct {
+	rwlock_t* lock;
+
 	unsigned long key_size;
 	unsigned long size;
 
@@ -19,8 +22,12 @@ typedef struct {
 	/// compare(&left, &right)
 	int (* compare)(void*, void*);
 
+  //free data in map_remove, before references are removed
+	void (*free)(void*);
+
 	unsigned long length;
 	unsigned long num_buckets;
+
 	char* buckets;
 } map_t;
 typedef struct {
@@ -53,22 +60,34 @@ typedef struct {
 } map_probe_iterator;
 extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
+typedef struct {
+  char* bin;
+  unsigned long size;
+} map_sized_t;
+uint64_t hash_sized(map_sized_t* x);
 uint64_t hash_ulong(unsigned long* x);
 uint64_t hash_ptr(void** x);
 int compare_string(char** left, char** right);
+int compare_sized(map_sized_t* left, map_sized_t* right);
 int compare_ulong(unsigned long* left, unsigned long* right);
 int compare_ptr(void** left, void** right);
+void free_string(void* x);
+void free_sized(void* x);
 unsigned long map_bucket_size(map_t* map);
 map_t map_new();
+void map_distribute(map_t* map);
 void map_configure(map_t* map, unsigned long size);
 void map_configure_string_key(map_t* map, unsigned long size);
+void map_configure_sized_key(map_t* map, unsigned long size);
 void map_configure_ulong_key(map_t* map, unsigned long size);
 void map_configure_ptr_key(map_t* map, unsigned long size);
 int map_load_factor(map_t* map);
 uint16_t mask(bucket* bucket, uint8_t h2);
 map_iterator map_iterate(map_t* map);
 int map_next(map_iterator* iterator);
+void map_next_delete(map_iterator* iterator);
 extern uint16_t MAP_PROBE_EMPTY;
+void* map_findkey(map_t* map, void* key);
 void* map_find(map_t* map, void* key);
 typedef struct {
 	char* pos;

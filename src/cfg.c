@@ -125,6 +125,7 @@ void configure(map_t* default_cfg, char* file) {
 
 		if (!val) {
 			fprintf(stderr, "cannot parse config, no value for %s", name);
+			return;
 		}
 
 		val->is_default = 0;

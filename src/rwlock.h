@@ -1,8 +1,8 @@
 // Automatically generated header.
 
 #pragma once
-#include <stdlib.h>
 #include "threads.h"
+#include <stdlib.h>
 typedef struct {
   mtx_t prop; //lock on rwlock properties (ex. readers must wait for writer to see write)
   unsigned read; //amount of readers

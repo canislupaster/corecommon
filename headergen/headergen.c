@@ -593,18 +593,15 @@ object *parse_object(state *state, object *super, int static_) {
       return NULL;
 
     token *name_tok = NULL;
-    while (*state->file) {
-      if (skip_sep(state))
-        break;
-      else if (parse_start_brace(state)) {  // otherwise fwd decl
+    while (*state->file && *state->file != ';' && *state->file != ',') {
+      if (parse_start_brace(state)) {  // otherwise fwd decl
         obj = super ? super
                     : object_new(state);  // used so lower-order objects
                                           // reference most superior object
         while (!parse_end_brace(state)) {
           parse_object(state, obj, static_);  // parse field type, add deps
           if (!parse_sep(state))
-            parse_token(
-                state);  // parse field name or dont (ex. anonymous union)
+            parse_token(state);  // parse field name or dont (ex. anonymous union)
                          // parse any addendums
           while (!parse_sep(state)) {
             // i changed this did i break anything
@@ -625,7 +622,7 @@ object *parse_object(state *state, object *super, int static_) {
     }
 
     if (name_tok) {
-      name = prefix(token_str(state, name_tok), kind_prefix);
+      name = heapstr("%s %s;", kind_prefix, token_str(state, name_tok));
     }
   } else {
     char *str = token_str(state, first);

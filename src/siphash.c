@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -70,7 +71,7 @@
 
 static struct {
 	char initialized;
-	char key[16]; //uint64_t with ints
+	char key[16]; //uint128_t with ints
 }
 	SIPHASH_KEY = {.initialized=0, .key={0, 0, 0, 0}};
 
@@ -124,6 +125,7 @@ uint64_t siphash24_keyed(const void* src, unsigned long src_sz) {
 	if (!SIPHASH_KEY.initialized) {
 		SIPHASH_KEY.initialized = 1;
 
+		srand(time(NULL)); //and other arsery
 		for (char i = 0; i < 8; i++) {
 			SIPHASH_KEY.key[i] = (char)rand();
 		}
