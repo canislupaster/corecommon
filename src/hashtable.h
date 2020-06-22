@@ -86,6 +86,7 @@ uint16_t mask(bucket* bucket, uint8_t h2);
 map_iterator map_iterate(map_t* map);
 int map_next(map_iterator* iterator);
 void map_next_delete(map_iterator* iterator);
+extern uint16_t MAP_PROBE_EMPTY;
 void* map_findkey(map_t* map, void* key);
 void* map_find(map_t* map, void* key);
 typedef struct {
