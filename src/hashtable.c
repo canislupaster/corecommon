@@ -70,7 +70,7 @@ typedef struct {
 
 	bucket* current;
 	/// temporary storage for c when matching
-	char c;
+	unsigned char c;
 } map_probe_iterator;
 
 static uint64_t make_h1(uint64_t hash) {
@@ -295,46 +295,53 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 
 static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 
+#if __x86_64__
 	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)probe_iter->current->control_bytes);
 
 	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(probe_iter->h2), control_byte_vec);
 	uint16_t masked = _mm_movemask_epi8(result);
 
 	*empty = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(0), control_byte_vec))==UINT16_MAX;
+#elif __arm__
+	uint8x16_t control_byte_vec = vld1q_u8(&bucket->control_bytes);
 
-	void* old_compare_key=NULL;
-	for (probe_iter->c = 0; probe_iter->c < CONTROL_BYTES; probe_iter->c++) {
-		if ((masked >> probe_iter->c) & 0x01) {
-			old_compare_key =
-					(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * probe_iter->c);
-
-			if (probe_iter->map->compare(probe_iter->key, old_compare_key))
-				break;
-		}
-	}
+	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(h2));
+	uint64_t[2] masked;
+	vst1q_u8(masked, result); //no movemask?
 	
+	uint8x16_t empty_res = vceqq_u8(control_byte_vec, vdupq_n_u8(0));
+	uint64_t[2] empty_mem;
+	vst1q_u8(empty_mem, empty_res);
+
+	*empty = empty_mem[0]==UINT64_MAX && empty_mem[1]=UINT64_MAX;
+#endif
+
 	//there is a matched byte, find which one
-	void* compare_key=NULL;
-	while (masked > 0) {
+#if __x86_64__
+	if (masked > 0) {
+
 		unsigned x = (unsigned)masked;
 		probe_iter->c = __builtin_ctz(x);
+#elif __arm__
+	if (masked[0] > 0 || masked[1] > 0) {
+
+		probe_iter->c = masked[0]>0 ? __builtin_ctzll(masked[0]) : 64+__builtin_ctzll(masked[1]);
+		probe_iter->c /= 8;
+#endif
 		
-		compare_key =
+		if (probe_iter->current->control_bytes[probe_iter->c] != probe_iter->h2) {
+			printf("AAAA");
+		}
+
+		void* compare_key =
 			(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * probe_iter->c);
 	
-		if (probe_iter->map->compare(probe_iter->key, compare_key)) {
-			break;
-		} else {
-			//masked >>= (uint16_t)(probe_iter->c)+1;
-			break;
-		}
-	}
-		
-	if (compare_key != old_compare_key) {
-		printf("AAAAA");
-	}
+		if (probe_iter->map->compare(probe_iter->key, compare_key))
+			return compare_key;
 
-	return old_compare_key;
+	}	
+
+	return NULL;
 }
 
 void* map_findkey(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
