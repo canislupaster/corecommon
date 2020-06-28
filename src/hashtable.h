@@ -2,7 +2,11 @@
 
 #pragma once
 #include <string.h>
+#if __arm__
+#include <arm_neon.h>
+#elif __x86_64
 #include <emmintrin.h>
+#endif
 #include <stdint.h>
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2

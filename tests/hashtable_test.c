@@ -1,4 +1,4 @@
-#include "../src/hashtable.c"
+#include "../src/hashtable.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -9,7 +9,7 @@ static char *rand_string(char *str, unsigned long size)
     if (size) {
         --size;
         for (unsigned long n = 0; n < size; n++) {
-            int key = rand() % (int) (sizeof charset - 1);
+            int key = rand() % (int) (strlen(charset) - 1);
             str[n] = charset[key];
         }
         str[size] = '\0';
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         char* v = malloc(31);
         rand_string(v, 30);
 
-        map_insertcpy(&x, &key, v);
+        map_insertcpy(&x, &key, &v);
         if (map_find(&x, &key)==NULL) return 1;
     }
 

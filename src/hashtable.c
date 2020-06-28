@@ -1,6 +1,10 @@
 #include <string.h>
 #include <stdint.h>
+#if __arm__
+#include <arm_neon.h>
+#elif __x86_64
 #include <emmintrin.h>
+#endif
 
 #include "util.h"
 #include "rwlock.h"
@@ -195,13 +199,6 @@ int map_load_factor(map_t* map) {
 	return ((double) (map->length) / (double) (map->num_buckets * CONTROL_BYTES)) > 0.5;
 }
 
-uint16_t mask(bucket* bucket, uint8_t h2) {
-	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)bucket->control_bytes);
-
-	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(h2), control_byte_vec);
-	return _mm_movemask_epi8(result);
-}
-
 map_iterator map_iterate(map_t* map) {
 	map_iterator iterator = {
 			map,
@@ -304,16 +301,16 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	*empty = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(0), control_byte_vec))==UINT16_MAX;
 	
 #elif __arm__
-	uint8x16_t control_byte_vec = vld1q_u8(&bucket->control_bytes);
-	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(h2));
-	uint64_t[2] masked;
-	vst1q_u8(masked, result); //no movemask?
+	uint8x16_t control_byte_vec = vld1q_u8(probe_iter->current->control_bytes);
+	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(probe_iter->h2));
+	uint64_t masked[2];
+	vst1q_u8((uint8_t*)masked, result); //no movemask?
 	
 	uint8x16_t empty_res = vceqq_u8(control_byte_vec, vdupq_n_u8(0));
-	uint64_t[2] empty_mem;
-	vst1q_u8(empty_mem, empty_res);
+	uint64_t empty_mem[2];
+	vst1q_u8((uint8_t*)empty_mem, empty_res);
 	
-	*empty = empty_mem[0]==UINT64_MAX && empty_mem[1]=UINT64_MAX;
+	*empty = empty_mem[0]==UINT64_MAX && empty_mem[1]==UINT64_MAX;
 #endif
 	
 	unsigned offset=0;
@@ -322,7 +319,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	while (masked > 0) {
 		
 		unsigned x = (unsigned)masked;
-		probe_iter->c = offset+__builtin_ctz(x);
+		probe_iter->c = __builtin_ctz(x);
 #elif __arm__
 	while (masked[0] > 0 || masked[1] > 0) {
 
@@ -331,13 +328,24 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 #endif
 		
 		void* compare_key =
-			(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * probe_iter->c);
+			(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * (probe_iter->c+offset));
 		
 		if (probe_iter->map->compare(probe_iter->key, compare_key)) {
 				return compare_key;
 		} else {
-			offset += probe_iter->c+1;
+#if __x86_64__
 			masked >>= probe_iter->c+1;
+			offset += probe_iter->c+1;
+#elif __arm__
+			if (masked[0]>0) {
+				masked[0] >>= 8*(probe_iter->c+1);
+				if (masked[0]==0) offset=0;
+				else offset += probe_iter->c+1;
+			} else {
+				masked[1] >>= 8*(probe_iter->c+1);
+				offset += probe_iter->c+1;
+			}
+#endif
 		}
 	}
 	
@@ -535,3 +543,4 @@ void map_free(map_t* map) {
 	drop(map->buckets);
 	if (map->lock) rwlock_free(map->lock);
 }
+
