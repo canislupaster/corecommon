@@ -857,8 +857,6 @@ void add_file(state *state, char *path, char *filename) {
 
   str[len] = 0;
 
-  fclose(handle);
-
   file *new_file = map_insert(&state->files, &path).val;
 
   new_file->objects = map_new();
