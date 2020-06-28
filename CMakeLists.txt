@@ -10,6 +10,8 @@ add_library(corecommon ${SRC})
 add_executable(headergen ${CMAKE_CURRENT_SOURCE_DIR}/headergen/headergen.c ${CMAKE_CURRENT_SOURCE_DIR}/src/hashtable.c ${CMAKE_CURRENT_SOURCE_DIR}/src/vector.c ${CMAKE_CURRENT_SOURCE_DIR}/src/util.c ${CMAKE_CURRENT_SOURCE_DIR}/src/siphash.c ${CMAKE_CURRENT_SOURCE_DIR}/src/rwlock.c)
 target_link_libraries(headergen corecommon)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
+
 if (CMAKE_BUILD_TYPE MATCHES Debug)
 	add_compile_definitions(BUILD_DEBUG)
 else ()

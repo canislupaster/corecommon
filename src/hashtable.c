@@ -1,6 +1,10 @@
 #include <string.h>
 #include <stdint.h>
+#if __arm__
+#include <arm_neon.h>
+#elif __x86_64
 #include <emmintrin.h>
+#endif
 
 #include "util.h"
 #include "rwlock.h"
@@ -64,7 +68,7 @@ typedef struct {
 
 	bucket* current;
 	/// temporary storage for c when matching
-	char c;
+	unsigned char c;
 } map_probe_iterator;
 
 static uint64_t make_h1(uint64_t hash) {
@@ -195,13 +199,6 @@ int map_load_factor(map_t* map) {
 	return ((double) (map->length) / (double) (map->num_buckets * CONTROL_BYTES)) > 0.5;
 }
 
-uint16_t mask(bucket* bucket, uint8_t h2) {
-	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)bucket->control_bytes);
-
-	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(h2), control_byte_vec);
-	return _mm_movemask_epi8(result);
-}
-
 map_iterator map_iterate(map_t* map) {
 	map_iterator iterator = {
 			map,
@@ -294,28 +291,64 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 	return 1;
 }
 
-static uint16_t map_probe_empty(map_probe_iterator* probe_iter) {
-	return mask(probe_iter->current, 0);
-}
+static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
+#if __x86_64__
+	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)probe_iter->current->control_bytes);
 
-const uint16_t MAP_PROBE_EMPTY = UINT16_MAX;
+	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(probe_iter->h2), control_byte_vec);
+	uint16_t masked = _mm_movemask_epi8(result);
 
-static void* map_probe_match(map_probe_iterator* probe_iter) {
-	uint16_t masked = mask(probe_iter->current, probe_iter->h2);
+	*empty = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(0), control_byte_vec))==UINT16_MAX;
+	
+#elif __arm__
+	uint8x16_t control_byte_vec = vld1q_u8(probe_iter->current->control_bytes);
+	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(probe_iter->h2));
+	uint64_t masked[2];
+	vst1q_u8((uint8_t*)masked, result); //no movemask?
+	
+	uint8x16_t empty_res = vceqq_u8(control_byte_vec, vdupq_n_u8(0));
+	uint64_t empty_mem[2];
+	vst1q_u8((uint8_t*)empty_mem, empty_res);
+	
+	*empty = empty_mem[0]==UINT64_MAX && empty_mem[1]==UINT64_MAX;
+#endif
+	
+	unsigned offset=0;
+	
+#if __x86_64__
+	while (masked > 0) {
+		
+		unsigned x = (unsigned)masked;
+		probe_iter->c = __builtin_ctz(x);
+#elif __arm__
+	while (masked[0] > 0 || masked[1] > 0) {
 
-	//there is a matched byte, find which one
-	if (masked > 0) {
-		for (probe_iter->c = 0; probe_iter->c < CONTROL_BYTES; probe_iter->c++) {
-			if ((masked >> probe_iter->c) & 0x01) {
-				void* compare_key =
-						(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * probe_iter->c);
-
-				if (probe_iter->map->compare(probe_iter->key, compare_key))
-					return compare_key;
+		probe_iter->c = masked[0]>0 ? __builtin_ctzll(masked[0]) : 64+__builtin_ctzll(masked[1]);
+		probe_iter->c /= 8;
+#endif
+		
+		void* compare_key =
+			(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * (probe_iter->c+offset));
+		
+		if (probe_iter->map->compare(probe_iter->key, compare_key)) {
+				return compare_key;
+		} else {
+#if __x86_64__
+			masked >>= probe_iter->c+1;
+			offset += probe_iter->c+1;
+#elif __arm__
+			if (masked[0]>0) {
+				masked[0] >>= 8*(probe_iter->c+1);
+				if (masked[0]==0) offset=0;
+				else offset += probe_iter->c+1;
+			} else {
+				masked[1] >>= 8*(probe_iter->c+1);
+				offset += probe_iter->c+1;
 			}
+#endif
 		}
 	}
-
+	
 	return NULL;
 }
 
@@ -323,8 +356,10 @@ void* map_findkey(map_t* map, void* key) { //TODO: if length == stuff seen stop 
 	if (map->lock) rwlock_read(map->lock);
 
 	map_probe_iterator probe = map_probe(map, key);
-	while (map_probe_next(&probe) && map_probe_empty(&probe) != MAP_PROBE_EMPTY) {
-		void* x = map_probe_match(&probe);
+	while (map_probe_next(&probe)) {
+		char empty;
+		void* x = map_probe_match(&probe, &empty);
+		if (empty) break;
 		
 		if (x) {
 			if (map->lock) rwlock_unread(map->lock);
@@ -358,14 +393,14 @@ static map_probe_insert_result map_probe_insert(map_probe_iterator* probe) {
 
 	while (map_probe_next(probe)) {
 		//already exists, overwrite
-		char* probe_match = map_probe_match(probe);
+		char empty;
+		char* probe_match = map_probe_match(probe, &empty);
+		
 		if (probe_match) {
 			res.exists = 1;
 			res.pos = probe_match;
 			return res;
 		}
-
-		uint16_t empty = map_probe_empty(probe);
 
 		//look for empty slot and set bucket
 		//dont use sse for flexibility to check for sentinels and stuff
@@ -383,7 +418,7 @@ static map_probe_insert_result map_probe_insert(map_probe_iterator* probe) {
 		}
 
 		//empty bucket, stop probing
-		if (empty == MAP_PROBE_EMPTY)
+		if (empty)
 			break;
 	}
 
@@ -401,8 +436,11 @@ static map_probe_insert_result map_probe_insert(map_probe_iterator* probe) {
 
 //returns the item which can be used/copied if the hashmap is not being used in parallel
 static void* map_probe_remove(map_probe_iterator* probe) {
-	while (map_probe_next(probe) && map_probe_empty(probe) != MAP_PROBE_EMPTY) {
-		void* x = map_probe_match(probe);
+	while (map_probe_next(probe)) {
+		char empty;
+		void* x = map_probe_match(probe, &empty);
+		if (empty) break;
+		
 		//found, set h2 to sentinel
 		if (x) {
 			probe->current->control_bytes[probe->c] = MAP_SENTINEL_H2;
@@ -505,3 +543,4 @@ void map_free(map_t* map) {
 	drop(map->buckets);
 	if (map->lock) rwlock_free(map->lock);
 }
+

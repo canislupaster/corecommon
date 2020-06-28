@@ -46,7 +46,6 @@ typedef struct {
   char *path;
   char *filestart;
   char *file;
-  vector_t tokens;
   vector_t if_stack;  // stack of #ifs to copy to objects
 
   file *current;
@@ -107,6 +106,8 @@ int ws(state *state) {
 
 int parse_comment(state *state) {
   // skip comments
+	if (strlen(state->file) < 2) return 0;
+
   if (strncmp(state->file, "//", 2) == 0) {
     state->file += 2;  // skip //
     while (*state->file && *state->file != '\n') state->file++;
@@ -166,7 +167,7 @@ int skip_nows(state *state) {
       state->file++;
     }
 
-    state->file++;  // skip "
+    if (*state->file) state->file++;  // skip "
 
     return 1;
   }
@@ -174,8 +175,8 @@ int skip_nows(state *state) {
   if (*state->file == '\'') {
     state->file++;  // skip '
     if (*state->file == '\\') state->file++;
-    state->file++;  // skip char
-    state->file++;  // skip '
+		if (*state->file) state->file++;  // skip char
+    if (*state->file) state->file++;  // skip '
 
     return 1;
   }
@@ -323,8 +324,8 @@ int parse_name(state *state) {
     return 0;
 }
 
-token *parse_token_noskip(state *state) {
-  if (!*state->file) return NULL;
+token parse_token_noskip(state *state) {
+  if (!*state->file) return (token){.start=NULL, .len=0};
 
   token tok;
   tok.start = state->file;
@@ -336,17 +337,17 @@ token *parse_token_noskip(state *state) {
     state->file++;
   }
 
-  return vector_pushcpy(&state->tokens, &tok);
+  return tok;
 }
 
 /// parses identifiers
-token *parse_token(state *state) {
+token parse_token(state *state) {
   parse_skip(state);
 
   return parse_token_noskip(state);
 }
 
-token *parse_token_braced(state *state) {
+token parse_token_braced(state *state) {
   parse_skip(state);
   if (skip_sep(state) || skip_paren(state) || skip_braces(state)) {
     return parse_token_braced(state);
@@ -355,8 +356,8 @@ token *parse_token_braced(state *state) {
   return parse_token_noskip(state);
 }
 
-int token_eq(token *tok, char *str) {
-  return tok->len == strlen(str) && strncmp(tok->start, str, tok->len) == 0;
+int token_eq(token tok, char *str) {
+  return tok.len == strlen(str) && strncmp(tok.start, str, tok.len) == 0;
 }
 
 char *range(char *start, char *end) {
@@ -366,17 +367,17 @@ char *range(char *start, char *end) {
   return str;
 }
 
-char *token_str(state *state, token *tok) {
-  if (tok == NULL) {
+char *token_str(state *state, token tok) {
+  if (!tok.len) {
     fprintf(stderr, "expected token at %s...",
             range(state->file, state->file + MIN(10, strlen(state->file))));
 
     exit(1);
   }
 
-  char *str = heap(tok->len + 1);
-  memcpy(str, tok->start, tok->len);
-  str[tok->len] = 0;
+  char *str = heap(tok.len + 1);
+  memcpy(str, tok.start, tok.len);
+  str[tok.len] = 0;
   return str;
 }
 
@@ -462,30 +463,30 @@ void clnpath(char *path) {
   if ((dst -= 2) > path && *dst == '/') *dst++ = '\0';
 }
 
-token *parse_string(state *state) {
+token parse_string(state *state) {
   parse_ws(state);
 
   if (*state->file == '\"') {
-    token *tok = vector_push(&state->tokens);
+    token tok;
 
     state->file++;
-    tok->start = state->file;
-    tok->len = 0;
+    tok.start = state->file;
+    tok.len = 0;
 
     while (*state->file != '\"' && *state->file) {
       if (*state->file == '\\') {
         state->file++;
-        tok->len++;
+        tok.len++;
       }
 
       state->file++;
-      tok->len++;
+      tok.len++;
     }
 
     state->file++;
     return tok;
   } else {
-    return NULL;
+    return (token){.start=NULL, .len=0};;
   }
 }
 
@@ -517,10 +518,10 @@ object *parse_object(state *state, object *super, int static_) {
   object *obj = NULL;
   char *name = NULL;
 
-  token *first = parse_token_braced(state);
+  token first = parse_token_braced(state);
 
-  if (!first) return NULL;
-  char *start = first->start;
+  if (!first.len) return NULL;
+  char *start = first.start;
 
   if (token_eq(first, "#define") && !super) {
     obj = object_new(state);
@@ -544,7 +545,7 @@ object *parse_object(state *state, object *super, int static_) {
         continue;
       }
 
-      token *tok = parse_token_noskip(state);
+      token tok = parse_token_noskip(state);
       char *str = token_str(state, tok);
 
       vector_pushcpy(&state->current->deps, &str);
@@ -565,51 +566,43 @@ object *parse_object(state *state, object *super, int static_) {
     obj->declaration = affix(range(start, state->file), ";");
 
     skip_sep(state);
-  } else if (token_eq(first, "enum")) {
-    obj = super ? super : object_new(state);  // choose object to reference
-                                              // depending on superior object
-    obj->declaration = NULL;  // for use when anonymous enums spread
-
-    name = NULL;  // anonymous default
-    if (!parse_peek_brace(state))
-      name = prefix(token_str(state, parse_token(state)), "enum ");
-
-    if (parse_start_brace(state)) {  // otherwise fwd decl
-      while (!parse_end_brace(state)) {
-        char *str = token_str(state, parse_token(state));
-        object_ref(state, str, obj);
-      }
-    }
-
-    // skip decl if superior object exists
-    if (!super) obj->declaration = affix(range(start, state->file), ";");
-  } else if (token_eq(first, "struct") || token_eq(first, "union")) {
+  } else if (token_eq(first, "struct") || token_eq(first, "union") || token_eq(first, "enum")) {
     char *kind_prefix;
     if (token_eq(first, "struct"))
       kind_prefix = "struct ";
     else if (token_eq(first, "union"))
       kind_prefix = "union ";
+		else if (token_eq(first, "enum"))
+			kind_prefix = "enum ";
     else
       return NULL;
 
-    token *name_tok = NULL;
+    token name_tok = {.start=NULL, .len=0};
     while (*state->file && *state->file != ';' && *state->file != ',') {
       if (parse_start_brace(state)) {  // otherwise fwd decl
         obj = super ? super
                     : object_new(state);  // used so lower-order objects
                                           // reference most superior object
-        while (!parse_end_brace(state)) {
-          parse_object(state, obj, static_);  // parse field type, add deps
-          if (!parse_sep(state))
-            parse_token(state);  // parse field name or dont (ex. anonymous union)
-                         // parse any addendums
-          while (!parse_sep(state)) {
-            // i changed this did i break anything
-            parse_object(state, obj, 1);
-          }
+				if (token_eq(first, "enum")) {
+					while (!parse_end_brace(state)) {
+						char *str = token_str(state, parse_token(state));
+						object_ref(state, str, obj);
+					}
 
-          parse_ws(state);
-        }
+				} else {
+					while (!parse_end_brace(state)) {
+						parse_object(state, obj, static_);  // parse field type, add deps
+						if (!parse_sep(state))
+							parse_token(state);  // parse field name or dont (ex. anonymous union)
+													 // parse any addendums
+						while (!parse_sep(state)) {
+							// i changed this did i break anything
+							parse_object(state, obj, 1);
+						}
+
+						parse_ws(state);
+					}
+				}
 
         if (!super) obj->declaration = affix(range(start, state->file), ";");
 
@@ -621,7 +614,7 @@ object *parse_object(state *state, object *super, int static_) {
                           // whatever else you need here
     }
 
-    if (name_tok) {
+    if (name_tok.len) {
       name = heapstr("%s %s;", kind_prefix, token_str(state, name_tok));
     }
   } else {
@@ -743,8 +736,8 @@ object *parse_global_object(state *state) {
   object *ty = parse_object(state, NULL, static_);
   char *reset = state->file;  // reset to ty if not a global variable/function
 
-  token *name_tok = parse_token(state);
-  if (!name_tok) return ty;
+  token name_tok = parse_token(state);
+  if (!name_tok.len) return ty;
 
   char *name = token_str(state, name_tok);
 
@@ -798,7 +791,7 @@ object *parse_global_object(state *state) {
         if (parse_end_brace(state)) break;
         if (parse_sep(state)) continue;  // handle preamble to another statement
 
-        token *tok = parse_token_braced(state);
+        token tok = parse_token_braced(state);
         char *str = token_str(state, tok);
         vector_pushcpy(&state->current->deps, &str);
       }
@@ -857,8 +850,6 @@ void add_file(state *state, char *path, char *filename) {
 
   str[len] = 0;
 
-  fclose(handle);
-
   file *new_file = map_insert(&state->files, &path).val;
 
   new_file->objects = map_new();
@@ -881,7 +872,6 @@ void add_file(state *state, char *path, char *filename) {
   state->braces = 0;
   state->parens = 0;
 
-  state->tokens = vector_new(sizeof(token));
   state->if_stack = vector_new(sizeof(if_t));
 
   state->current = new_file;
@@ -890,23 +880,20 @@ void add_file(state *state, char *path, char *filename) {
     parse_global_object(state);
   }
 
-  vector_clear(&state->tokens);
-
-  free(str);
+  drop(str);
 }
 
 void recurse_add_file(state *state, tinydir_file file) {
   if (file.is_dir) {
     tinydir_dir dir;
     tinydir_open(&dir, file.path);
-    tinydir_next(&dir);  // skip .
-    tinydir_next(&dir);  // skip ..
 
-    while (dir.has_next) {
+    for (; dir.has_next; tinydir_next(&dir)) {
       tinydir_readfile(&dir, &file);
-      recurse_add_file(state, file);
+			if (strcmp(file.name, ".")==0 || strcmp(file.name, "..")==0 || strcmp(file.name, "./")==0)
+				continue;
 
-      tinydir_next(&dir);
+      recurse_add_file(state, file);
     }
 
     tinydir_close(&dir);
