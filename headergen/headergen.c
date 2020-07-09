@@ -26,15 +26,20 @@ typedef struct {
   int pub;
 } object;
 
+typedef struct {
+	char* raw;
+	char* path; // resolved paths for lookup
+	vector_t ifs;
+
+	int pub;
+} include;
+
 typedef struct file {
   map_t objects;  // map of vectors (for aliasing) of objects
   vector_t deps;  // file-wide deps from contents of functions/globals
 
   vector_t sorted_objects;
-  vector_t includes;      // resolved paths for lookup
-  vector_t raw_includes;  // string in #include "..."
-
-  map_t pub_includes;  // set of published raw includes
+  vector_t includes;      
 
   int pub;  // has any published objects
 } file;
@@ -61,7 +66,7 @@ object *object_new(state *state_) {
 
   obj->file = state_->current;
   obj->deps = vector_new(sizeof(char *));
-  obj->include_deps = vector_new(sizeof(char *));
+  obj->include_deps = vector_new(sizeof(include*));
   obj->pub = 0;
 
   vector_cpy(&state_->if_stack, &obj->ifs);
@@ -369,8 +374,8 @@ char *range(char *start, char *end) {
 
 char *token_str(state *state, token tok) {
   if (!tok.len) {
-    fprintf(stderr, "expected token at %s...",
-            range(state->file, state->file + MIN(10, strlen(state->file))));
+    fprintf(stderr, "expected token at %s... in %s",
+            range(state->file, state->file + MIN(20, strlen(state->file))), state->path);
 
     exit(1);
   }
@@ -540,7 +545,7 @@ object *parse_object(state *state, object *super, int static_) {
         continue;
 
       // avoid newlines
-      if (*state->file == ' ') {
+      if (*state->file == ' ' || *state->file == '\t') {
         state->file++;
         continue;
       }
@@ -647,6 +652,29 @@ char *get_cond(state *state) {
   return range(ifstart, state->file);
 }
 
+include* get_inc(file* f, char* str, vector_t* ifs) {
+	vector_iterator iter = vector_iterate(&f->includes);
+	while (vector_next(&iter)) {
+		include* inc = *(include**)iter.x;
+		if (ifs->length == inc->ifs.length && strcmp(str, inc->path)==0) {
+			vector_iterator iter = vector_iterate(ifs);
+			int br=0;
+			while (vector_next(&iter)) {
+				if_t* other = vector_get(&inc->ifs, iter.i-1);
+				if (strcmp(((if_t*)iter.x)->cond, other->cond)!=0) {
+					br=1;
+					break;
+				}
+			}
+
+			if (br) break;
+			else return inc;
+		}
+	}
+
+	return NULL;
+}
+
 object *parse_global_object(state *state) {
   parse_skip(state);
   if (skip_sep(state)) return NULL;
@@ -660,9 +688,19 @@ object *parse_global_object(state *state) {
   if (skip_word(state, "#include")) {
     parse_ws(state);
     if (*state->file != '"') {
+			char* path_start = state->file;
+			
       parse_define(state);
       char *str = range(start, state->file);
-      map_insert(&state->current->pub_includes, &str);
+      char* path = range(path_start, state->file);
+
+      if (!get_inc(state->current, path, &state->if_stack)) {
+				include* inc = heapcpy(sizeof(include), &(include){.raw=str, .path=path, .pub=1});
+				vector_cpy(&state->if_stack, &inc->ifs);
+
+				vector_pushcpy(&state->current->includes, &inc);
+			}
+
       return NULL;
     }
 
@@ -673,14 +711,14 @@ object *parse_global_object(state *state) {
 
     char *str = range(start, state->file);
 
-    path = realpath(path, NULL);
-    if (!path) {
-      map_insert(&state->current->pub_includes, &str);
-    } else {
-      vector_pushcpy(&state->current->includes, &path);
-      vector_pushcpy(&state->current->raw_includes, &str);
-    }
+    char* rpath = realpath(path, NULL);
 
+		include* inc = heapcpy(sizeof(include), &(include){.path=rpath ? rpath : path, .raw=str, .pub=rpath==NULL});
+		vector_cpy(&state->if_stack, &inc->ifs);
+
+		if (!get_inc(state->current, inc->path, &state->if_stack))
+			vector_pushcpy(&state->current->includes, &inc);
+		
     return NULL;
   } else if (skip_word(state, "#if")) {
     vector_pushcpy(&state->if_stack,
@@ -784,10 +822,19 @@ object *parse_global_object(state *state) {
 
     // i changed this it may break everything
     // i vividly remember having to fix it already im scared
-    if (parse_start_brace(state)) {
+		int braces;
+		
+		if (parse_start_brace(state)) {
       while (!parse_end_brace(state)) {
-        while (skip_type(state))
-          ;
+        while (skip_type(state));
+				
+				if (strncmp(state->file, "#if", strlen("#if"))==0) { //true story
+					braces = state->braces;
+				} else if (strncmp(state->file, "#elif", strlen("#elif"))==0) {
+					//restore braces from preceding #if
+					state->braces = braces;
+				}
+				
         if (parse_end_brace(state)) break;
         if (parse_sep(state)) continue;  // handle preamble to another statement
 
@@ -819,6 +866,49 @@ void pub_deps(file *file, object *obj) {
       pub_deps(file, *(object **)iter_objs.x);
     }
   }
+}
+
+void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs) {
+	// remove old ifs
+	int remove_to = 0;
+
+	vector_iterator file_if_iter = vector_iterate(if_stack);
+	while (vector_next(&file_if_iter)) {
+		if_t *file_if = file_if_iter.x;
+		if_t *obj_if = vector_get(new_ifs, file_if_iter.i - 1);
+
+		if (!obj_if || strcmp(obj_if->cond, file_if->cond) != 0 ||
+				obj_if->kind != file_if->kind) {
+			remove_to = file_if_iter.i - 1;
+			break;
+		}
+	}
+
+	for (int i = if_stack->length - remove_to; i > 0; i--) {
+		vector_pop(if_stack);
+		fprintf(handle, "#endif\n");
+	}
+
+	vector_iterator if_iter = vector_iterate(new_ifs);
+	if_iter.i = remove_to;  // add from point at which stack is divergent
+
+	while (vector_next(&if_iter)) {
+		if_t *_if = if_iter.x;
+
+		switch (_if->kind) {
+			case if_none:
+				fprintf(handle, "#if %s\n", _if->cond);
+				break;
+			case if_def:
+				fprintf(handle, "#ifdef %s\n", _if->cond);
+				break;
+			case if_ndef:
+				fprintf(handle, "#ifdef %s\n", _if->cond);
+				break;
+		}
+
+		vector_pushcpy(if_stack, if_iter.x);
+	}
 }
 
 void add_file(state *state, char *path, char *filename) {
@@ -859,11 +949,7 @@ void add_file(state *state, char *path, char *filename) {
   new_file->deps = vector_new(sizeof(char *));
 
   new_file->pub = 0;
-  new_file->includes = vector_new(sizeof(char *));
-  new_file->raw_includes = vector_new(sizeof(char *));
-
-  new_file->pub_includes = map_new();
-  map_configure_string_key(&new_file->pub_includes, 0);
+  new_file->includes = vector_new(sizeof(include*));
 
   state->filestart = str;
   state->file = str;
@@ -970,11 +1056,14 @@ int main(int argc, char **argv) {
     vector_iterator inc_iter = vector_iterate(&this->includes);
 
     while (vector_next(&inc_iter)) {
-      file *inc_file = map_find(&state_.files, inc_iter.x);
+			include* inc = *(include**)inc_iter.x;
+			if (inc->pub) continue;
+
+      file* inc_file = map_find(&state_.files, &inc->path);
+
       if (!inc_file) {
         // if include does not reference a file that is searched, make public
-        map_insert(&this->pub_includes,
-                   vector_get(&this->raw_includes, inc_iter.i - 1));
+        inc->pub = 1;
         continue;
       }
 
@@ -995,8 +1084,7 @@ int main(int argc, char **argv) {
           }
 
           // set obj to include inc_iter.i, in case obj ever gets published
-          vector_pushcpy(&obj->include_deps,
-                         vector_get(&this->raw_includes, inc_iter.i - 1));
+          vector_pushcpy(&obj->include_deps, &inc);
         }
       }
 
@@ -1031,15 +1119,17 @@ int main(int argc, char **argv) {
     FILE *handle = fopen(filename, "w");
     fprintf(handle, "// Automatically generated header.\n\n#pragma once\n");
 
-    map_iterator pub_inc_iter = map_iterate(&gen_this->pub_includes);
-    while (map_next(&pub_inc_iter)) {
-      char *inc = *(char **)pub_inc_iter.key;
-      fwrite(inc, strlen(inc), 1, handle);
-
-      fprintf(handle, "\n");
-    }
-
     vector_t if_stack = vector_new(sizeof(if_stack));
+
+		vector_iterator iter = vector_iterate(&gen_this->includes);
+		while (vector_next(&iter)) {
+			include* inc = *(include**)iter.x;
+			if (!inc->pub) continue;
+
+			set_ifs(gen_this, handle, &if_stack, &inc->ifs);
+
+			fprintf(handle, "%s\n", inc->raw);
+		}
 
     vector_iterator ordered_iter = vector_iterate(&gen_this->sorted_objects);
     while (vector_next(&ordered_iter)) {
@@ -1047,62 +1137,23 @@ int main(int argc, char **argv) {
 
       if ((!pub && !ordered_obj->pub) || !ordered_obj->declaration) continue;
 
-      // remove old ifs
-      int remove_to = 0;
-
-      vector_iterator file_if_iter = vector_iterate(&if_stack);
-      while (vector_next(&file_if_iter)) {
-        if_t *file_if = file_if_iter.x;
-        if_t *obj_if = vector_get(&ordered_obj->ifs, file_if_iter.i - 1);
-
-        if (!obj_if || strcmp(obj_if->cond, file_if->cond) != 0 ||
-            obj_if->kind != file_if->kind) {
-          remove_to = file_if_iter.i - 1;
-          break;
-        }
-      }
-
-      for (int i = if_stack.length - remove_to; i > 0; i--) {
-        vector_pop(&if_stack);
-        fprintf(handle, "#endif\n");
-      }
-
-      vector_iterator if_iter = vector_iterate(&ordered_obj->ifs);
-      if_iter.i = remove_to;  // add from point at which stack is divergent
-
-      while (vector_next(&if_iter)) {
-        if_t *_if = if_iter.x;
-
-        switch (_if->kind) {
-          case if_none:
-            fprintf(handle, "#if %s\n", _if->cond);
-            break;
-          case if_def:
-            fprintf(handle, "#ifdef %s\n", _if->cond);
-            break;
-          case if_ndef:
-            fprintf(handle, "#ifdef %s\n", _if->cond);
-            break;
-        }
-
-        vector_pushcpy(&if_stack, if_iter.x);
-      }
-
       vector_iterator inc_iter = vector_iterate(&ordered_obj->include_deps);
       while (vector_next(&inc_iter)) {
         // write include if doesnt exist
-        if (!map_insert(&gen_this->pub_includes, inc_iter.x).exists) {
-          char *inc = *(char **)inc_iter.x;
-          fwrite(inc, strlen(inc), 1, handle);
+				include* inc = *(include**)inc_iter.x;
 
-          fprintf(handle, "\n");
+				if (!inc->pub) {
+					inc->pub = 1;
+
+					set_ifs(gen_this, handle, &if_stack, &inc->ifs);
+
+          fprintf(handle, "%s\n", inc->raw);
         }
       }
 
-      fwrite(ordered_obj->declaration, strlen(ordered_obj->declaration), 1,
-             handle);
+			set_ifs(gen_this, handle, &if_stack, &ordered_obj->ifs);
 
-      fprintf(handle, "\n");
+      fprintf(handle, "%s\n", ordered_obj->declaration);
     }
 
     while (if_stack.length > 0) {

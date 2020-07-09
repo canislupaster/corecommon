@@ -1,9 +1,9 @@
 // Automatically generated header.
 
 #pragma once
-#include "threads.h"
 #include <stdlib.h>
 #include <stdint.h>
+#include "threads.h"
 #include "vector.h"
 typedef struct {
   vector_t mtxs;

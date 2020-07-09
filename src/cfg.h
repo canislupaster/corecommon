@@ -1,8 +1,8 @@
 // Automatically generated header.
 
 #pragma once
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 typedef enum {
 	cfg_num, cfg_float, cfg_str
 } cfg_ty;

@@ -2,12 +2,13 @@
 
 #pragma once
 #include <string.h>
+#include <stdint.h>
 #if __arm__
 #include <arm_neon.h>
-#elif __x86_64
+#endif
+#if __x86_64
 #include <emmintrin.h>
 #endif
-#include <stdint.h>
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2
 typedef struct {
@@ -60,7 +61,7 @@ typedef struct {
 
 	bucket* current;
 	/// temporary storage for c when matching
-	char c;
+	unsigned char c;
 } map_probe_iterator;
 extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
@@ -86,11 +87,9 @@ void map_configure_sized_key(map_t* map, unsigned long size);
 void map_configure_ulong_key(map_t* map, unsigned long size);
 void map_configure_ptr_key(map_t* map, unsigned long size);
 int map_load_factor(map_t* map);
-uint16_t mask(bucket* bucket, uint8_t h2);
 map_iterator map_iterate(map_t* map);
 int map_next(map_iterator* iterator);
 void map_next_delete(map_iterator* iterator);
-extern uint16_t MAP_PROBE_EMPTY;
 void* map_findkey(map_t* map, void* key);
 void* map_find(map_t* map, void* key);
 typedef struct {

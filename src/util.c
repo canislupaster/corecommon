@@ -77,8 +77,15 @@ void* heapcpy(size_t size, const void* val) {
 	return res;
 }
 
-void* heapcpystr(const char* str) {
+char* heapcpystr(const char* str) {
 	return heapcpy(strlen(str) + 1, str);
+}
+
+char* heapcpysubstr(const char* begin, size_t len) {
+	char* str = heap(len+1);
+	str[len] = 0;
+	memcpy(str, begin, len);
+	return str;
 }
 
 /// asprintf but ignore errors and return string (or null if error)
@@ -101,6 +108,15 @@ void* resize(void* ptr, size_t size) {
 		fprintf(stderr, "out of memory!");
 		abort();
 	}
+	
+	#if BUILD_DEBUG
+		if (ALLOCATIONS.initialized) {
+			map_remove(&ALLOCATIONS.alloc_map, &res);
+			
+			trace new_tr = stacktrace();
+			if (ALLOCATIONS.initialized) map_insertcpy(&ALLOCATIONS.alloc_map, &res, &new_tr);
+		}
+	#endif
 
 	return res;
 }

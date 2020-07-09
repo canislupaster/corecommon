@@ -1,14 +1,21 @@
 #include <string.h>
 #include <stdint.h>
+
+//dont use elif until its implemented in headergen
 #if __arm__
 #include <arm_neon.h>
-#elif __x86_64
+#endif
+
+#if __x86_64
 #include <emmintrin.h>
 #endif
+//not that it will be
 
 #include "util.h"
 #include "rwlock.h"
 #include "siphash.h"
+
+//no im serious cuz it implies the other branch which might'nt be needed
 
 #define CONTROL_BYTES 16
 #define DEFAULT_BUCKETS 2
@@ -112,7 +119,8 @@ int compare_string(char** left, char** right) {
 }
 
 int compare_sized(map_sized_t* left, map_sized_t* right) {
-	return left->size == right->size && memcmp(left->bin, right->bin, left->size) == 0;
+	return left->size == right->size
+		&& (left->bin == right->bin || memcmp(left->bin, right->bin, left->size) == 0);
 }
 
 int compare_ulong(unsigned long* left, unsigned long* right) {
@@ -457,7 +465,12 @@ void map_resize(map_t* map) {
 		unsigned long old_num_buckets = map->num_buckets;
 		map->num_buckets *= 2;
 
-		map->buckets = resize(map->buckets, map->num_buckets * map_bucket_size(map));
+		//use realloc in case debugging is enabled on resize
+		map->buckets = realloc(map->buckets, map->num_buckets * map_bucket_size(map));
+		if (!map->buckets) {
+			fprintf(stderr, "out of memory! hashtable.c");
+			abort();
+		}
 
 		for (unsigned long i = old_num_buckets; i < map->num_buckets; i++) {
 			memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
@@ -498,11 +511,9 @@ map_insert_result map_insert(map_t* map, void* key) {
 		map->length++;
 	}
 
-	insertion.pos += map->key_size;
-
 	if (map->lock) rwlock_unwrite(map->lock);
 
-	map_insert_result res = {.val=insertion.pos, .exists=insertion.exists};
+	map_insert_result res = {.val=insertion.pos+map->key_size, .exists=insertion.exists};
 	return res;
 }
 

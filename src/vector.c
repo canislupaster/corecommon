@@ -12,7 +12,7 @@ typedef struct {
 typedef struct {
 	vector_t* vec;
 
-	unsigned long i;
+	long i;
 	char rev;
 	void* x;
 } vector_iterator;
@@ -30,13 +30,13 @@ vector_t vector_from_string(char* str) {
 
 /// returns ptr to insertion point
 void* vector_push(vector_t* vec) {
-	vec->length++;
-
 	//allocate or resize
-	if (!vec->data)
+	if (vec->length==0)
 		vec->data = heap(vec->size);
 	else
-		vec->data = resize(vec->data, vec->size * vec->length);
+		vec->data = resize(vec->data, vec->size * (vec->length+1));
+	
+	vec->length++;
 
 	return vec->data + (vec->length - 1) * vec->size;
 }
@@ -48,12 +48,12 @@ void* vector_pushcpy(vector_t* vec, void* x) {
 }
 
 void* vector_stock(vector_t* vec, unsigned long length) {
-	vec->length += length;
-	
-	if (!vec->data)
+	if (vec->length==0)
 		vec->data = heap(vec->size * length);
 	else
-		vec->data = resize(vec->data, vec->size * vec->length);
+		vec->data = resize(vec->data, vec->size * (vec->length+length));
+	
+	vec->length += length;
 
 	return vec->data + (vec->length-length)*vec->size;
 }
@@ -85,11 +85,30 @@ char* vector_getstr(vector_t* vec, unsigned long i) {
   return x ? *x : NULL;
 }
 
+void vector_downsize(vector_t* vec) {
+	if (vec->length == 0)
+		drop(vec->data);
+	else
+		vec->data = resize(vec->data, vec->length * vec->size);
+}
+
+void vector_upsize(vector_t* vec, unsigned long length) {
+	if (vec->length == 0)
+		vec->data = heap(vec->length * vec->size);
+	else
+		vec->data = resize(vec->data, vec->size*(vec->length+length));
+	
+	vec->length += length;
+}
+
 void vector_truncate(vector_t* vec, unsigned long length) {
-	if (vec->length > length) {
+	if (length == 0) {
+		drop(vec->data);
+	} else if (vec->length > length) {
 		vec->data = resize(vec->data, vec->size*length);
-		vec->length = length;
 	}
+	
+	vec->length = length;
 }
 
 int vector_pop(vector_t* vec) {
@@ -97,7 +116,7 @@ int vector_pop(vector_t* vec) {
 		return 0;
 
 	vec->length--;
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 
 	return 1;
 }
@@ -109,7 +128,7 @@ char* vector_popptr(vector_t* vec) {
   char* ptr = *(char**)(vec->data + vec->size*(vec->length-1));
 
 	vec->length--;
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 
 	return ptr;
 }
@@ -121,7 +140,7 @@ void* vector_popcpy(vector_t* vec) {
 	void* x = heapcpy(vec->size, vec->data + vec->size * (vec->length - 1));
 
 	vec->length--;
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 
 	return x;
 }
@@ -129,7 +148,7 @@ void* vector_popcpy(vector_t* vec) {
 /// returns 1 if removed successfully
 int vector_remove(vector_t* vec, unsigned long i) {
 	//sanity checks
-	if (!vec->data || i >= vec->length)
+	if (i >= vec->length)
 		return 0;
 
 	vec->length--;
@@ -138,12 +157,12 @@ int vector_remove(vector_t* vec, unsigned long i) {
 				 vec->data + (i + 1) * vec->size,
 				 (vec->length - i) * vec->size);
 
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 	return 1;
 }
 
 char* vector_removeptr(vector_t* vec, unsigned long i) {
-	if (!vec->data || i >= vec->length)
+	if (i >= vec->length)
 		return NULL;
 
   char* ptr = *(char**)(vec->data + vec->size*i);
@@ -154,12 +173,12 @@ char* vector_removeptr(vector_t* vec, unsigned long i) {
 				 vec->data + (i + 1) * vec->size,
 				 (vec->length - i) * vec->size);
 
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 	return ptr;
 }
 
 int vector_removemany(vector_t* vec, unsigned long i, unsigned long len) {
-	if (!vec->data || i+len > vec->length)
+	if (i+len > vec->length)
 		return 0;
 
 	vec->length -= len;
@@ -168,14 +187,12 @@ int vector_removemany(vector_t* vec, unsigned long i, unsigned long len) {
 				 vec->data + (i + len) * vec->size,
 				 (vec->length - i) * vec->size);
 
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 	return 1;
 }
 
-/// returns 1 if removed successfully
 int vector_remove_element(vector_t* vec, char* x) {
-	//sanity checks
-	if (!vec->data || x >= vec->size * vec->length + vec->data)
+	if (x >= vec->size * vec->length + vec->data)
 		return 0;
 
 	vec->length--;
@@ -184,18 +201,13 @@ int vector_remove_element(vector_t* vec, char* x) {
 				 x + vec->size,
 				 (vec->data + vec->length * vec->size) - x);
 
-	vec->data = resize(vec->data, vec->size * vec->length);
+	vector_downsize(vec);
 	return 1;
 }
 
 //inserts element into index i
 void* vector_insert(vector_t* vec, unsigned long i) {
-	vec->length++;
-
-	if (!vec->data)
-		vec->data = heap(vec->size);
-	else
-		vec->data = resize(vec->data, vec->size * vec->length);
+	vector_upsize(vec, 1);
 
 	if (vec->length > i)
 		memcpy(vec->data + vec->size * (i + 1),
@@ -213,12 +225,7 @@ void* vector_insertcpy(vector_t* vec, unsigned long i, void* x) {
 }
 
 void* vector_insert_many(vector_t* vec, unsigned long i, unsigned long length) {
-	vec->length+=length;
-
-	if (!vec->data)
-		vec->data = heap(vec->size*length);
-	else
-		vec->data = resize(vec->data, vec->size * vec->length);
+	vector_upsize(vec, length);
 
 	if (vec->length-length >= i)
 		memcpy(vec->data + vec->size * (i + length),
@@ -263,21 +270,17 @@ vector_iterator vector_iterate(vector_t* vec) {
 	return iter;
 }
 
-int vector_next(vector_iterator* iter) {
-	iter->x = iter->vec->data + (iter->rev ? iter->vec->length - 1 - iter->i : iter->i) * iter->vec->size;
-	iter->i++;
-
-	if (iter->i > iter->vec->length)
-		return 0;
-	else
-		return 1;
+vector_iterator vector_iterate_rev(vector_t* vec) {
+	return (vector_iterator){vec, .i=vec->length-1, .rev=1};
 }
 
-int vector_skip(vector_iterator* iter, unsigned count) {
-	iter->x = iter->vec->data + (iter->rev ? iter->vec->length - 1 - iter->i : iter->i) * iter->vec->size;
-	iter->i += 3;
+int vector_next(vector_iterator* iter) {
+	iter->x = iter->vec->data + iter->i * iter->vec->size;
+	if (iter->rev) iter->i--; else iter->i++;
 
-	if (iter->i > iter->vec->length)
+	if ((iter->rev && iter->i < -1)
+		|| (!iter->rev && iter->i > iter->vec->length))
+
 		return 0;
 	else
 		return 1;
@@ -304,14 +307,14 @@ void vector_add(vector_t* from, vector_t* to) {
 	vector_stockcpy(to, from->length, from->data);
 }
 
-void* vector_search(vector_t* vec, void* elem) {
+unsigned long vector_search(vector_t* vec, void* elem) {
 	vector_iterator iter = vector_iterate(vec);
 	while (vector_next(&iter)) {
 		if (memcmp(iter.x, elem, vec->size)==0)
-			return iter.x;
+			return iter.i;
 	}
 
-	return NULL;
+	return 0;
 }
 
 unsigned long vector_cmp(vector_t* vec1, vector_t* vec2) {
@@ -339,6 +342,40 @@ unsigned long vector_cmpstr(vector_t* vec1, vector_t* vec2) {
   return 0;
 }
 
+//shell-selection sort
+//max size 64
+void vector_sort_inplace(vector_t* vec, size_t offset, size_t size) {
+	vector_iterator iter = vector_iterate(vec);
+
+	uint64_t x;
+	uint64_t next;
+	char temp[vec->size];
+
+	unsigned long prev_pos;
+
+	while (vector_next(&iter)) {
+		memcpy(&x, (char*)iter.x+offset, size);
+		if (!iter.rev) memcpy(&next, (char*)iter.x+vec->size+offset, size);
+
+		if (x>next) {
+			iter.rev=1;
+			prev_pos = iter.i;
+
+			iter.i -= 2;
+
+			continue;
+		} else if (iter.rev) {
+			//insert next before x
+			memcpy((char*)iter.x+vec->size, (char*)iter.x, vector_get(vec, prev_pos-1)-iter.x);
+			memcpy(iter.x, temp, vec->size);
+
+			iter.i = prev_pos;
+			iter.rev=0;
+		}
+	}
+}
+
+//mutates string and does not allocate (except for vector)
 vector_t vector_split_str(char* str, const char* delim) {
 	vector_t vec = vector_new(sizeof(char*));
 	
@@ -376,16 +413,14 @@ void vector_flatten_strings(vector_t* vec, vector_t* out, char* delim, unsigned 
 }
 
 void vector_clear(vector_t* vec) {
-	if (vec->data) {
+	if (vec->length>0)
 		drop(vec->data);
-		vec->data = NULL;
-	}
 
 	vec->length = 0;
 }
 
 void vector_free(vector_t* vec) {
-	if (vec->data)
+	if (vec->length>0)
 		drop(vec->data);
 }
 
@@ -419,6 +454,6 @@ void vector_free_strings(vector_t* vec) {
 		drop(*(char**)iter.x);
 	}
 
-	if (vec->data)
+	if (vec->length>0)
 		drop(vec->data);
 }
