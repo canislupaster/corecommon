@@ -25,6 +25,8 @@ void memcheck_init() {
 	if (!ALLOCATIONS.initialized) {
 		ALLOCATIONS.alloc_map = map_new();
 		map_configure_ptr_key(&ALLOCATIONS.alloc_map, sizeof(trace));
+		map_distribute(&ALLOCATIONS.alloc_map);
+
 		ALLOCATIONS.initialized = 1;
 	}
 }
@@ -32,7 +34,10 @@ void memcheck_init() {
 
 void drop(void* ptr) {
 	free(ptr);
+	
+#if BUILD_DEBUG
 	if (ALLOCATIONS.initialized) map_remove(&ALLOCATIONS.alloc_map, &ptr);
+#endif
 }
 
 trace stacktrace() {
@@ -56,16 +61,19 @@ void print_trace(trace* trace) {
 
 void* heap(size_t size) {
 	void* res = malloc(size);
-	trace tr = stacktrace();
 
 	if (!res) {
 		fprintf(stderr, "out of memory!");
+		trace tr = stacktrace();
 		print_trace(&tr);
 		abort();
 	}
 
 #if BUILD_DEBUG
-	if (ALLOCATIONS.initialized) map_insertcpy(&ALLOCATIONS.alloc_map, &res, &tr);
+	if (ALLOCATIONS.initialized) {
+		trace tr = stacktrace();
+		map_insert_result mapres = map_insertcpy(&ALLOCATIONS.alloc_map, &res, &tr);
+	}
 #endif
 
 	return res;
@@ -110,11 +118,11 @@ void* resize(void* ptr, size_t size) {
 	}
 	
 	#if BUILD_DEBUG
-		if (ALLOCATIONS.initialized) {
-			map_remove(&ALLOCATIONS.alloc_map, &res);
-			
+		if (ALLOCATIONS.initialized && ptr != res) {
+			map_remove(&ALLOCATIONS.alloc_map, &ptr);
+
 			trace new_tr = stacktrace();
-			if (ALLOCATIONS.initialized) map_insertcpy(&ALLOCATIONS.alloc_map, &res, &new_tr);
+			map_insertcpy(&ALLOCATIONS.alloc_map, &res, &new_tr);
 		}
 	#endif
 

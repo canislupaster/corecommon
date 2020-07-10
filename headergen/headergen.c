@@ -822,7 +822,7 @@ object *parse_global_object(state *state) {
 
     // i changed this it may break everything
     // i vividly remember having to fix it already im scared
-		int braces;
+		int braces=0;
 		
 		if (parse_start_brace(state)) {
       while (!parse_end_brace(state)) {

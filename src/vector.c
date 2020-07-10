@@ -28,15 +28,26 @@ vector_t vector_from_string(char* str) {
 	return (vector_t){.size=1, .length=strlen(str)+1, .data=str};
 }
 
+void vector_downsize(vector_t* vec) {
+	if (vec->length == 0)
+		drop(vec->data);
+	else
+		vec->data = resize(vec->data, vec->length * vec->size);
+}
+
+void vector_upsize(vector_t* vec, unsigned long length) {
+	if (vec->length == 0)
+		vec->data = heap(length * vec->size);
+	else
+		vec->data = resize(vec->data, vec->size*(vec->length+length));
+	
+	vec->length += length;
+}
+
 /// returns ptr to insertion point
 void* vector_push(vector_t* vec) {
 	//allocate or resize
-	if (vec->length==0)
-		vec->data = heap(vec->size);
-	else
-		vec->data = resize(vec->data, vec->size * (vec->length+1));
-	
-	vec->length++;
+	vector_upsize(vec, 1);
 
 	return vec->data + (vec->length - 1) * vec->size;
 }
@@ -48,12 +59,7 @@ void* vector_pushcpy(vector_t* vec, void* x) {
 }
 
 void* vector_stock(vector_t* vec, unsigned long length) {
-	if (vec->length==0)
-		vec->data = heap(vec->size * length);
-	else
-		vec->data = resize(vec->data, vec->size * (vec->length+length));
-	
-	vec->length += length;
+	vector_upsize(vec, length);
 
 	return vec->data + (vec->length-length)*vec->size;
 }
@@ -83,22 +89,6 @@ void* vector_get(vector_t* vec, unsigned long i) {
 char* vector_getstr(vector_t* vec, unsigned long i) {
 	char** x = vector_get(vec, i);
   return x ? *x : NULL;
-}
-
-void vector_downsize(vector_t* vec) {
-	if (vec->length == 0)
-		drop(vec->data);
-	else
-		vec->data = resize(vec->data, vec->length * vec->size);
-}
-
-void vector_upsize(vector_t* vec, unsigned long length) {
-	if (vec->length == 0)
-		vec->data = heap(vec->length * vec->size);
-	else
-		vec->data = resize(vec->data, vec->size*(vec->length+length));
-	
-	vec->length += length;
 }
 
 void vector_truncate(vector_t* vec, unsigned long length) {

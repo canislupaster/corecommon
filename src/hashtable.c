@@ -58,13 +58,6 @@ typedef struct {
 } map_iterator;
 
 typedef struct {
-	void* val;
-	char exists;
-} map_insert_result;
-
-const char DEFAULT_BUCKET[CONTROL_BYTES] = {0};
-
-typedef struct {
 	map_t* map;
 
 	void* key;
@@ -78,6 +71,13 @@ typedef struct {
 	unsigned char c;
 } map_probe_iterator;
 
+typedef struct {
+	void* val;
+	char exists;
+} map_insert_result;
+
+const char DEFAULT_BUCKET[CONTROL_BYTES] = {0};
+
 static uint64_t make_h1(uint64_t hash) {
 	return (hash << 7) >> 7;
 }
@@ -86,8 +86,9 @@ const uint8_t MAP_SENTINEL_H2 = 0x80;
 
 static uint8_t make_h2(uint64_t hash) {
 	uint8_t h2 = (hash >> 57);
-	if (h2 == 0)
-		h2 = 0xFFu; //if h2 is zero, its control byte will be marked empty, so just invert it
+	
+	if (h2 == 0 || h2==MAP_SENTINEL_H2)
+		h2 = ~h2; //if h2 is zero, its control byte will be marked empty, so just invert it
 
 	return h2;
 }
@@ -218,9 +219,7 @@ map_iterator map_iterate(map_t* map) {
 }
 
 //todo: sse
-int map_next(map_iterator* iterator) {
-	if (iterator->map->lock) rwlock_read(iterator->map->lock);
-
+int map_next_unlocked(map_iterator* iterator) {
 	//while bucket is less than the last bucket in memory
 	while (iterator->bucket < iterator->map->num_buckets) {
 		iterator->bucket_ref = (bucket*) (iterator->map->buckets + map_bucket_size(iterator->map) * iterator->bucket);
@@ -243,14 +242,18 @@ int map_next(map_iterator* iterator) {
 
 		//if filled (we've already updated key, return
 		if (filled) {
-			if (iterator->map->lock)
-				rwlock_unread(iterator->map->lock);
 			return 1;
 		}
 	}
 
-	if (iterator->map->lock) rwlock_unread(iterator->map->lock);
 	return 0;
+}
+
+int map_next(map_iterator* iterator) {
+	if (iterator->map->lock) rwlock_read(iterator->map->lock);
+	int res = map_next_unlocked(iterator);
+	if (iterator->map->lock) rwlock_unread(iterator->map->lock);
+	return res;
 }
 
 void map_next_delete(map_iterator* iterator) {
@@ -327,20 +330,24 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	while (masked > 0) {
 		
 		unsigned x = (unsigned)masked;
-		probe_iter->c = __builtin_ctz(x);
+		probe_iter->c = __builtin_ctz(x) + offset;
 #elif __arm__
 	while (masked[0] > 0 || masked[1] > 0) {
 
 		probe_iter->c = masked[0]>0 ? __builtin_ctzll(masked[0]) : 64+__builtin_ctzll(masked[1]);
 		probe_iter->c /= 8;
+		
+		probe_iter->c += offset;
 #endif
 		
 		void* compare_key =
-			(char*) probe_iter->current + CONTROL_BYTES + (probe_iter->map->size * (probe_iter->c+offset));
+			(char*) probe_iter->current + CONTROL_BYTES + probe_iter->map->size * probe_iter->c;
 		
 		if (probe_iter->map->compare(probe_iter->key, compare_key)) {
 				return compare_key;
 		} else {
+			probe_iter->c -= offset; //simplify next operations
+			
 #if __x86_64__
 			masked >>= probe_iter->c+1;
 			offset += probe_iter->c+1;
@@ -413,13 +420,13 @@ static map_probe_insert_result map_probe_insert(map_probe_iterator* probe) {
 		//look for empty slot and set bucket
 		//dont use sse for flexibility to check for sentinels and stuff
 		if (!bucket_ref) {
-			for (unsigned char c2 = 0; c2 < CONTROL_BYTES; c2++) {
+			for (c = 0; c < CONTROL_BYTES; c++) {
 				//empty or sentinel
-				if (probe->current->control_bytes[c2] == 0
-						|| probe->current->control_bytes[c2] == MAP_SENTINEL_H2) {
+				if (probe->current->control_bytes[c] == 0
+						|| probe->current->control_bytes[c] == MAP_SENTINEL_H2) {
 
 					bucket_ref = probe->current;
-					c = c2;
+					probe->c = c;
 					break;
 				}
 			}
@@ -436,6 +443,7 @@ static map_probe_insert_result map_probe_insert(map_probe_iterator* probe) {
 	}
 
 	//set h2
+	probe->current = bucket_ref;
 	bucket_ref->control_bytes[c] = probe->h2;
 	//return insertion point
 	res.pos = (char*) bucket_ref + CONTROL_BYTES + (probe->map->size * c);
@@ -478,13 +486,13 @@ void map_resize(map_t* map) {
 
 		//rehash
 		map_iterator iter = map_iterate(map);
-		while (map_next(&iter) && iter.bucket < old_num_buckets) {
+		while (map_next_unlocked(&iter) && iter.bucket < old_num_buckets) {
 			uint64_t hash = map->hash(iter.key);
 			uint64_t h1 = make_h1(hash);
 
 			//if it has moved buckets, remove and insert into new bucket
 			if (h1 % map->num_buckets != iter.bucket) {
-				iter.bucket_ref->control_bytes[iter.current_c] = 0x80;
+				iter.bucket_ref->control_bytes[iter.current_c] = MAP_SENTINEL_H2;
 
 				map_probe_iterator probe = map_probe_hashed(map, iter.key, h1, make_h2(hash));
 				//copy things over
@@ -494,8 +502,8 @@ void map_resize(map_t* map) {
 		}
 	}
 }
-
-map_insert_result map_insert(map_t* map, void* key) {
+	
+map_insert_result map_insert_locked(map_t* map, void* key) {
 	map_probe_iterator probe = map_probe(map, key);
 
 	if (map->lock) rwlock_write(map->lock);
@@ -510,10 +518,14 @@ map_insert_result map_insert(map_t* map, void* key) {
 		memcpy(insertion.pos, key, map->key_size);
 		map->length++;
 	}
-
-	if (map->lock) rwlock_unwrite(map->lock);
-
+	
 	map_insert_result res = {.val=insertion.pos+map->key_size, .exists=insertion.exists};
+	return res;
+}
+
+map_insert_result map_insert(map_t* map, void* key) {
+	map_insert_result res = map_insert_locked(map, key);
+	if (map->lock) rwlock_unwrite(map->lock);
 	return res;
 }
 
