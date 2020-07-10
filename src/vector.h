@@ -18,6 +18,8 @@ typedef struct {
 } vector_iterator;
 vector_t vector_new(unsigned long size);
 vector_t vector_from_string(char* str);
+void vector_downsize(vector_t* vec);
+void vector_upsize(vector_t* vec, unsigned long length);
 void* vector_push(vector_t* vec);
 void* vector_pushcpy(vector_t* vec, void* x);
 void* vector_stock(vector_t* vec, unsigned long length);

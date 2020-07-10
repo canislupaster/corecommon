@@ -47,10 +47,6 @@ typedef struct {
 	bucket* bucket_ref;
 } map_iterator;
 typedef struct {
-	void* val;
-	char exists;
-} map_insert_result;
-typedef struct {
 	map_t* map;
 
 	void* key;
@@ -63,6 +59,11 @@ typedef struct {
 	/// temporary storage for c when matching
 	unsigned char c;
 } map_probe_iterator;
+typedef struct {
+	void* val;
+	char exists;
+} map_insert_result;
+uint64_t make_h1(uint64_t hash);
 extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
 typedef struct {
@@ -88,6 +89,7 @@ void map_configure_ulong_key(map_t* map, unsigned long size);
 void map_configure_ptr_key(map_t* map, unsigned long size);
 int map_load_factor(map_t* map);
 map_iterator map_iterate(map_t* map);
+int map_next_unlocked(map_iterator* iterator);
 int map_next(map_iterator* iterator);
 void map_next_delete(map_iterator* iterator);
 void* map_findkey(map_t* map, void* key);
@@ -98,6 +100,7 @@ typedef struct {
 	char exists;
 } map_probe_insert_result;
 void map_resize(map_t* map);
+map_insert_result map_insert_locked(map_t* map, void* key);
 map_insert_result map_insert(map_t* map, void* key);
 map_insert_result map_insertcpy(map_t* map, void* key, void* v);
 void map_cpy(map_t* from, map_t* to);
