@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include "util.h"
 
@@ -347,8 +348,8 @@ unsigned long vector_cmpstr(vector_t* vec1, vector_t* vec2) {
 void vector_sort_inplace(vector_t* vec, size_t offset, size_t size) {
 	vector_iterator iter = vector_iterate(vec);
 
-	uint64_t x;
-	uint64_t next;
+	uint64_t x=0;
+	uint64_t next=0;
 	char temp[vec->size];
 
 	unsigned long prev_pos;
