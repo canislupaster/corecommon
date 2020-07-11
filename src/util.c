@@ -33,11 +33,11 @@ void memcheck_init() {
 #endif
 
 void drop(void* ptr) {
-	free(ptr);
-	
 #if BUILD_DEBUG
 	if (ALLOCATIONS.initialized) map_remove(&ALLOCATIONS.alloc_map, &ptr);
 #endif
+	
+	free(ptr);
 }
 
 trace stacktrace() {

@@ -203,7 +203,7 @@ void* vector_insert(vector_t* vec, unsigned long i) {
 	if (vec->length > i)
 		memcpy(vec->data + vec->size * (i + 1),
 					 vec->data + vec->size * i,
-					 (vec->length - i) * vec->size);
+					 (vec->length-1 - i) * vec->size);
 
 	return vec->data + vec->size * i;
 }
@@ -395,7 +395,7 @@ void vector_flatten_strings(vector_t* vec, vector_t* out, char* delim, unsigned 
 	while (vector_next(&iter)) {
 		char* s = *(char**)iter.x;
 
-		vector_stockcpy(out, strlen(s), s);
+		vector_stockstr(out, s);
 
 		if (delim && iter.i < vec->length) {
 			vector_stockcpy(out, len, delim);
