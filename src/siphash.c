@@ -125,7 +125,7 @@ uint64_t siphash24_keyed(const void* src, unsigned long src_sz) {
 	if (!SIPHASH_KEY.initialized) {
 		SIPHASH_KEY.initialized = 1;
 
-		srand(time(NULL)); //and other arsery
+		srand((unsigned)time(NULL)); //and other arsery
 		for (char i = 0; i < 8; i++) {
 			SIPHASH_KEY.key[i] = (char)rand();
 		}

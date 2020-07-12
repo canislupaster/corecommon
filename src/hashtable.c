@@ -107,8 +107,8 @@ uint64_t hash_sized(map_sized_t* x) {
 	return siphash24_keyed((uint8_t*)x->bin, x->size);
 }
 
-uint64_t hash_ulong(unsigned long* x) {
-	return siphash24_keyed((uint8_t*) x, sizeof(unsigned long));
+uint64_t hash_uint64(uint64_t* x) {
+	return siphash24_keyed((uint8_t*) x, 8);
 }
 
 uint64_t hash_ptr(void** x) {
@@ -124,7 +124,7 @@ int compare_sized(map_sized_t* left, map_sized_t* right) {
 		&& (left->bin == right->bin || memcmp(left->bin, right->bin, left->size) == 0);
 }
 
-int compare_ulong(unsigned long* left, unsigned long* right) {
+int compare_uint64(uint64_t* left, uint64_t* right) {
 	return *left == *right;
 }
 
@@ -186,11 +186,11 @@ void map_configure_sized_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_ulong_key(map_t* map, unsigned long size) {
-	map->key_size = sizeof(unsigned long);
+void map_configure_uint64_key(map_t* map, unsigned long size) {
+	map->key_size = 8;
 
-	map->hash = (uint64_t(*)(void*)) hash_ulong;
-	map->compare = (int (*)(void*, void*)) compare_ulong;
+	map->hash = (uint64_t(*)(void*)) hash_uint64;
+	map->compare = (int (*)(void*, void*)) compare_uint64;
 
 	map_configure(map, size);
 }
@@ -198,8 +198,8 @@ void map_configure_ulong_key(map_t* map, unsigned long size) {
 void map_configure_ptr_key(map_t* map, unsigned long size) {
 	map->key_size = sizeof(unsigned long);
 
-	map->hash = (uint64_t(*)(void*)) hash_ulong;
-	map->compare = (int (*)(void*, void*)) compare_ulong;
+	map->hash = (uint64_t(*)(void*)) hash_ptr;
+	map->compare = (int (*)(void*, void*)) compare_ptr;
 
 	map_configure(map, size);
 }
@@ -543,7 +543,7 @@ void map_cpy(map_t* from, map_t* to) {
 	to->buckets = heapcpy(from->num_buckets * map_bucket_size(from), from->buckets);
 }
 
-int map_remove(map_t* map, void* key) {
+void* map_remove_locked(map_t* map, void* key) {
 	if (map->lock) rwlock_write(map->lock);
 
 	map_probe_iterator probe = map_probe(map, key);
@@ -553,13 +553,25 @@ int map_remove(map_t* map, void* key) {
     if (map->free) map->free(res);
 
 		map->length--;
-
-		if (map->lock) rwlock_unwrite(map->lock);
-		return 1;
+		
+		return res + map->key_size;
 	} else {
-		if (map->lock) rwlock_unwrite(map->lock);
-		return 0;
+		return NULL;
 	}
+}
+
+void* map_removeptr(map_t* map, void* key) {
+	void** res = map_remove_locked(map, key);
+	void* ptr = res ? *res : NULL;
+
+	if (map->lock) rwlock_unwrite(map->lock);
+	return ptr;
+}
+
+int map_remove(map_t* map, void* key) {
+	int res = map_remove_locked(map, key)!=NULL;
+	if (map->lock) rwlock_unwrite(map->lock);
+	return res;
 }
 
 void map_free(map_t* map) {

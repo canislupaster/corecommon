@@ -30,10 +30,12 @@ vector_t vector_from_string(char* str) {
 }
 
 void vector_downsize(vector_t* vec) {
-	if (vec->length == 0)
+	if (vec->length == 0) {
 		drop(vec->data);
-	else
+		vec->data = NULL;
+	} else {
 		vec->data = resize(vec->data, vec->length * vec->size);
+	}
 }
 
 void vector_upsize(vector_t* vec, unsigned long length) {
