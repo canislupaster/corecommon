@@ -367,9 +367,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	return NULL;
 }
 
-void* map_findkey(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
-	if (map->lock) rwlock_read(map->lock);
-
+void* map_findkey_unlocked(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
 	map_probe_iterator probe = map_probe(map, key);
 	while (map_probe_next(&probe)) {
 		char empty;
@@ -377,21 +375,25 @@ void* map_findkey(map_t* map, void* key) { //TODO: if length == stuff seen stop 
 		if (empty) break;
 		
 		if (x) {
-			if (map->lock) rwlock_unread(map->lock);
-
 			return x;
 		}
 	}
 
-	if (map->lock) rwlock_unread(map->lock);
 	return NULL;
 }
 
 // returns ptr to value after key
-void* map_find(map_t* map, void* key) {
-  void* res = map_findkey(map, key);
+void* map_find_unlocked(map_t* map, void* key) {
+  void* res = map_findkey_unlocked(map, key);
   if (res) res += map->key_size;
   return res;
+}
+
+void* map_find(map_t* map, void* key) {
+	if (map->lock) rwlock_read(map->lock);
+	void* res = map_find_unlocked(map, key);
+	if (map->lock) rwlock_unread(map->lock);
+	return res;
 }
 
 typedef struct {
@@ -550,9 +552,7 @@ void map_cpy(map_t* from, map_t* to) {
 	to->buckets = heapcpy(from->num_buckets * map_bucket_size(from), from->buckets);
 }
 
-void* map_remove_locked(map_t* map, void* key) {
-	if (map->lock) rwlock_write(map->lock);
-
+void* map_remove_unlocked(map_t* map, void* key) {
 	map_probe_iterator probe = map_probe(map, key);
 
   void* res = map_probe_remove(&probe);
@@ -568,7 +568,8 @@ void* map_remove_locked(map_t* map, void* key) {
 }
 
 void* map_removeptr(map_t* map, void* key) {
-	void** res = map_remove_locked(map, key);
+	if (map->lock) rwlock_write(map->lock);
+	void** res = map_remove_unlocked(map, key);
 	void* ptr = res ? *res : NULL;
 
 	if (map->lock) rwlock_unwrite(map->lock);
@@ -576,7 +577,8 @@ void* map_removeptr(map_t* map, void* key) {
 }
 
 int map_remove(map_t* map, void* key) {
-	int res = map_remove_locked(map, key)!=NULL;
+	if (map->lock) rwlock_write(map->lock);
+	int res = map_remove_unlocked(map, key)!=NULL;
 	if (map->lock) rwlock_unwrite(map->lock);
 	return res;
 }

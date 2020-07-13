@@ -92,7 +92,8 @@ map_iterator map_iterate(map_t* map);
 int map_next_unlocked(map_iterator* iterator);
 int map_next(map_iterator* iterator);
 void map_next_delete(map_iterator* iterator);
-void* map_findkey(map_t* map, void* key);
+void* map_findkey_unlocked(map_t* map, void* key);
+void* map_find_unlocked(map_t* map, void* key);
 void* map_find(map_t* map, void* key);
 typedef struct {
 	char* pos;
@@ -105,7 +106,7 @@ map_insert_result map_insert(map_t* map, void* key);
 map_insert_result map_insertcpy(map_t* map, void* key, void* v);
 map_insert_result map_insertcpy_noexist(map_t* map, void* key, void* v);
 void map_cpy(map_t* from, map_t* to);
-void* map_remove_locked(map_t* map, void* key);
+void* map_remove_unlocked(map_t* map, void* key);
 void* map_removeptr(map_t* map, void* key);
 int map_remove(map_t* map, void* key);
 void map_free(map_t* map);
