@@ -538,6 +538,13 @@ map_insert_result map_insertcpy(map_t* map, void* key, void* v) {
 	return res;
 }
 
+map_insert_result map_insertcpy_noexist(map_t* map, void* key, void* v) {
+	map_insert_result res = map_insert(map, key);
+	if (!res.exists) memcpy(res.val, v, map->size - map->key_size);
+
+	return res;
+}
+
 void map_cpy(map_t* from, map_t* to) {
 	*to = *from;
 	to->buckets = heapcpy(from->num_buckets * map_bucket_size(from), from->buckets);

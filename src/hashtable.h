@@ -103,6 +103,7 @@ void map_resize(map_t* map);
 map_insert_result map_insert_locked(map_t* map, void* key);
 map_insert_result map_insert(map_t* map, void* key);
 map_insert_result map_insertcpy(map_t* map, void* key, void* v);
+map_insert_result map_insertcpy_noexist(map_t* map, void* key, void* v);
 void map_cpy(map_t* from, map_t* to);
 void* map_remove_locked(map_t* map, void* key);
 void* map_removeptr(map_t* map, void* key);
