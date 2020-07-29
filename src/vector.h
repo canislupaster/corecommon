@@ -47,6 +47,7 @@ void* vector_setcpy(vector_t* vec, unsigned long i, void* x);
 vector_iterator vector_iterate(vector_t* vec);
 vector_iterator vector_iterate_rev(vector_t* vec);
 int vector_next(vector_iterator* iter);
+int vector_skip(vector_iterator* iter, unsigned long i);
 void* vector_peek(vector_iterator* iter);
 void vector_cpy(vector_t* from, vector_t* to);
 void vector_add(vector_t* from, vector_t* to);

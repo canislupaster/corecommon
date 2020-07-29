@@ -279,6 +279,19 @@ int vector_next(vector_iterator* iter) {
 		return 1;
 }
 
+int vector_skip(vector_iterator* iter, unsigned long i) {
+	iter->x = iter->vec->data + iter->i * iter->vec->size;
+	if (iter->rev) iter->i-=i; else iter->i+=i;
+
+	if ((iter->rev && iter->i < -1)
+		|| (!iter->rev && iter->i > iter->vec->length))
+
+		return 0;
+	else
+		return 1;
+}
+
+
 //same thing without increment
 void* vector_peek(vector_iterator* iter) {
 	if (iter->i > iter->vec->length) {
