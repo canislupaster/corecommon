@@ -27,3 +27,5 @@ char *ext(char *filename);
 #if BUILD_DEBUG
 void memcheck();
 #endif
+char hexchar(char hex);
+void charhex(unsigned char chr, char* out);
