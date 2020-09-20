@@ -3,12 +3,24 @@
 #include <string.h>
 #include "util.h"
 
-typedef struct {
-	unsigned long size;
+//small byte arrays, big stax
+typedef enum {
+	vector_cap = 0x1
+} vector_flags_t;
 
+typedef struct {
+	vector_flags_t flags;
+
+	unsigned size;
 	unsigned long length;
+
 	char* data;
 } vector_t;
+
+typedef struct {
+	vector_t vec;
+	unsigned long cap;
+} vector_cap_t;
 
 typedef struct {
 	vector_t* vec;
@@ -19,9 +31,14 @@ typedef struct {
 } vector_iterator;
 
 vector_t vector_new(unsigned long size) {
-	vector_t vec = {size, .length=0, .data=NULL};
+	vector_t vec = {.size=size, .flags=0, .length=0, .data=NULL};
 
 	return vec;
+}
+
+vector_cap_t vector_alloc(vector_t vec, unsigned long cap) {
+	vec.flags |= vector_cap;
+	return (vector_cap_t){.vec=vec, .cap=vec.length+cap};
 }
 
 //requires heap allocated str
@@ -30,7 +47,9 @@ vector_t vector_from_string(char* str) {
 }
 
 void vector_downsize(vector_t* vec) {
-	if (vec->length == 0) {
+	if (vec->flags & vector_cap) {
+		return;
+	} else if (vec->length == 0) {
 		drop(vec->data);
 		vec->data = NULL;
 	} else {
@@ -39,12 +58,27 @@ void vector_downsize(vector_t* vec) {
 }
 
 void vector_upsize(vector_t* vec, unsigned long length) {
-	if (vec->length == 0)
+	if (vec->flags & vector_cap) {
+		vector_cap_t* veccap = (vector_cap_t*)vec;
+
+		vec->length += length;
+
+		if (veccap->cap == 0) {
+			veccap->cap = length;
+			vec->data = heap(length * vec->size);
+		} else if (vec->length > veccap->cap) {
+			veccap->cap = vec->length;
+			vec->data = resize(vec->data, vec->size * veccap->cap);
+		}
+
+	} else if (vec->length == 0) {
+		//this is faster, no?
+		vec->length += length;
 		vec->data = heap(length * vec->size);
-	else
-		vec->data = resize(vec->data, vec->size*(vec->length+length));
-	
-	vec->length += length;
+	} else {
+		vec->length += length;
+		vec->data = resize(vec->data, vec->size * vec->length);
+	}
 }
 
 /// returns ptr to insertion point
@@ -95,13 +129,10 @@ char* vector_getstr(vector_t* vec, unsigned long i) {
 }
 
 void vector_truncate(vector_t* vec, unsigned long length) {
-	if (length == 0) {
-		drop(vec->data);
-	} else if (vec->length > length) {
+	if (vec->length > length) {
 		vec->data = resize(vec->data, vec->size*length);
+		vec->length = length;
 	}
-	
-	vec->length = length;
 }
 
 int vector_pop(vector_t* vec) {
@@ -241,8 +272,18 @@ void* vector_insertstr(vector_t* vec, unsigned long i, char* str) {
 
 void* vector_set(vector_t* vec, unsigned long i) {
 	if (i >= vec->length) {
-		vec->length = i + 1;
-		vec->data = resize(vec->data, vec->size * vec->length);
+		vector_upsize(vec, i+1-vec->length);
+	}
+
+	return vec->data + i * vec->size;
+}
+
+void* vector_setget(vector_t* vec, unsigned long i, char* exists) {
+	if (i >= vec->length) {
+		vector_upsize(vec, (i+1)-vec->length);
+		*exists = 0;
+	} else {
+		*exists = 1;
 	}
 
 	return vec->data + i * vec->size;
@@ -342,7 +383,7 @@ unsigned long vector_cmpstr(vector_t* vec1, vector_t* vec2) {
   while (vector_next(&iter)) {
     char* elem1 = *(char**)iter.x;
     char* elem2 = vector_getstr(vec2, iter.i-1);
-    if (strcmp(elem1, elem2)!=0) return iter.i;
+    if (!streq(elem1, elem2)) return iter.i;
   }
 
   return 0;

@@ -4,12 +4,21 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+typedef enum {
+	vector_cap = 0x1
+} vector_flags_t;
 typedef struct {
-	unsigned long size;
+	vector_flags_t flags;
 
+	unsigned size;
 	unsigned long length;
+
 	char* data;
 } vector_t;
+typedef struct {
+	vector_t vec;
+	unsigned long cap;
+} vector_cap_t;
 typedef struct {
 	vector_t* vec;
 
@@ -18,6 +27,7 @@ typedef struct {
 	void* x;
 } vector_iterator;
 vector_t vector_new(unsigned long size);
+vector_cap_t vector_alloc(vector_t vec, unsigned long cap);
 vector_t vector_from_string(char* str);
 void vector_downsize(vector_t* vec);
 void vector_upsize(vector_t* vec, unsigned long length);
@@ -43,6 +53,7 @@ void* vector_insert_many(vector_t* vec, unsigned long i, unsigned long length);
 void* vector_insert_manycpy(vector_t* vec, unsigned long i, unsigned long length, void* x);
 void* vector_insertstr(vector_t* vec, unsigned long i, char* str);
 void* vector_set(vector_t* vec, unsigned long i);
+void* vector_setget(vector_t* vec, unsigned long i, char* exists);
 void* vector_setcpy(vector_t* vec, unsigned long i, void* x);
 vector_iterator vector_iterate(vector_t* vec);
 vector_iterator vector_iterate_rev(vector_t* vec);

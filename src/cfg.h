@@ -3,6 +3,16 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
+int ws(char** s);
+void skip_ws(char** s);
+int skip_char(char** s, char x);
+int skip_while(char** s, char* x);
+int skip_until(char** s, char* x);
+int skip_name(char** s, char* name);
+char* parse_name(char** s);
+char* parse_string(char** s);
+int parse_num(char** s, int* parsed);
+int parse_float(char** s, double* parsed);
 typedef enum {
 	cfg_num, cfg_float, cfg_str
 } cfg_ty;

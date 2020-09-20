@@ -6,22 +6,36 @@
 
 //configuration file parser
 
-static int ws(char** s) { return **s == '\n' || **s == '\t' || **s == ' '; }
+int ws(char** s) { return **s == '\n' || **s == '\t' || **s == ' '; }
 
-static void skip_ws(char** s) {
+void skip_ws(char** s) {
   while (**s && ws(s)) (*s)++;
 }
 
-static int skip_char(char** s, char x) {
+int skip_char(char** s, char x) {
   if (**s == x) { (*s)++; return 1; } else return 0;
 }
 
-static void skip_until(char** s, char* x) {
-	while (**s && !strchr(x, **s)) (*s)++;
+int skip_while(char** s, char* x) {
+	while (strchr(x, **s)) {
+		if (!**s) return 0;
+		(*s)++;
+	}
+
+	return 1;
 }
 
-static int skip_name(char** s, char* name) {
-  if (strncmp(*s, name, strlen(name))) {
+int skip_until(char** s, char* x) {
+	while (!strchr(x, **s)) {
+		if (!**s) return 0;
+		(*s)++;
+	}
+
+	return 1;
+}
+
+int skip_name(char** s, char* name) {
+  if (strncmp(*s, name, strlen(name))==0) {
     *s += strlen(name);
     return 1;
   } else {
@@ -29,7 +43,7 @@ static int skip_name(char** s, char* name) {
   }
 }
 
-static char* parse_name(char** s) {
+char* parse_name(char** s) {
 	if (!**s || ws(s)) return 0;
 
 	char* nmstart = *s;
@@ -48,7 +62,7 @@ static char* parse_name(char** s) {
 	return name;
 }
 
-static char* parse_string(char** s) {
+char* parse_string(char** s) {
   if (**s == '\"') {
     (*s)++;
     char* strstart = *s;
@@ -74,14 +88,14 @@ static char* parse_string(char** s) {
   }
 }
 
-static int parse_num(char** s, int* parsed) {
+int parse_num(char** s, int* parsed) {
 	int succ = sscanf(*s, "%i", parsed);
 
 	skip_until(s, "\n");
 	return succ;
 }
 
-static int parse_float(char** s, double* parsed) {
+int parse_float(char** s, double* parsed) {
 	int succ = sscanf(*s, "%lf\n", parsed);
 	
 	skip_until(s, "\n");

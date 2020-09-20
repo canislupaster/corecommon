@@ -111,12 +111,16 @@ uint64_t hash_uint64(uint64_t* x) {
 	return siphash24_keyed((uint8_t*) x, 8);
 }
 
+uint64_t hash_uint96(uint32_t* x) {
+	return siphash24_keyed((uint8_t*) x, 4*3);
+}
+
 uint64_t hash_ptr(void** x) {
 	return siphash24_keyed((uint8_t*) x, sizeof(void*));
 }
 
 int compare_string(char** left, char** right) {
-	return strcmp(*left, *right) == 0;
+	return streq(*left, *right);
 }
 
 int compare_sized(map_sized_t* left, map_sized_t* right) {
@@ -126,6 +130,10 @@ int compare_sized(map_sized_t* left, map_sized_t* right) {
 
 int compare_uint64(uint64_t* left, uint64_t* right) {
 	return *left == *right;
+}
+
+int compare_uint96(uint32_t* left, uint32_t* right) {
+	return left[0] == right[0] && left[1] == right[1] && left[2] == right[2];
 }
 
 int compare_ptr(void** left, void** right) {
@@ -191,6 +199,15 @@ void map_configure_uint64_key(map_t* map, unsigned long size) {
 
 	map->hash = (uint64_t(*)(void*)) hash_uint64;
 	map->compare = (int (*)(void*, void*)) compare_uint64;
+
+	map_configure(map, size);
+}
+
+void map_configure_uint96_key(map_t* map, unsigned long size) {
+	map->key_size = 4*3;
+
+	map->hash = (uint64_t(*)(void*)) hash_uint96;
+	map->compare = (int (*)(void*, void*)) compare_uint96;
 
 	map_configure(map, size);
 }

@@ -85,6 +85,8 @@ void* heapcpy(size_t size, const void* val) {
 	return res;
 }
 
+//strings
+
 char* heapcpystr(const char* str) {
 	return heapcpy(strlen(str) + 1, str);
 }
@@ -107,6 +109,11 @@ char* heapstr(const char* fmt, ...) {
 	va_end(ap);
 
 	return strp;
+}
+
+//im tired of strcmp
+int streq(char* str1, char* str2) {
+	return strcmp(str1, str2)==0;
 }
 
 void* resize(void* ptr, size_t size) {

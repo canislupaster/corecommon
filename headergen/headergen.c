@@ -24,7 +24,7 @@ typedef struct {
   vector_t ifs;
 
   int pub;
-} object;
+} object_t;
 
 typedef struct {
 	char* raw;
@@ -60,8 +60,8 @@ typedef struct {
   vector_t deps;
 } state;
 
-object *object_new(state *state_) {
-  object *obj = heap(sizeof(object));
+object_t*object_new(state *state_) {
+	object_t*obj = heap(sizeof(object_t));
   obj->object_id = state_->current->sorted_objects.length;
 
   obj->file = state_->current;
@@ -74,18 +74,18 @@ object *object_new(state *state_) {
   return obj;
 }
 
-void object_ref(state *state_, char *name, object *obj) {
+void object_ref(state *state_, char *name, object_t*obj) {
   map_insert_result res = map_insert(&state_->current->objects, &name);
   vector_t *vec = res.val;
 
   if (!res.exists) {
-    *vec = vector_new(sizeof(object *));
+    *vec = vector_new(sizeof(object_t*));
   }
 
   vector_pushcpy(vec, &obj);
 }
 
-void object_push(state *state_, char *name, object *obj) {
+void object_push(state *state_, char *name, object_t*obj) {
   vector_pushcpy(&state_->current->sorted_objects, &obj);
   object_ref(state_, name, obj);
 }
@@ -495,7 +495,7 @@ token parse_string(state *state) {
   }
 }
 
-object *parse_object(state *state, object *super, int static_);
+object_t*parse_object(state *state, object_t*super, int static_);
 
 int skip_type(state *state) {
   parse_skip(state);
@@ -515,12 +515,12 @@ int skip_type(state *state) {
   }
 }
 
-object *parse_object(state *state, object *super, int static_) {
+object_t*parse_object(state *state, object_t*super, int static_) {
   if (skip_type(state)) {
     return NULL;
   }
 
-  object *obj = NULL;
+	object_t*obj = NULL;
   char *name = NULL;
 
   token first = parse_token_braced(state);
@@ -656,12 +656,12 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 	vector_iterator iter = vector_iterate(&f->includes);
 	while (vector_next(&iter)) {
 		include* inc = *(include**)iter.x;
-		if (ifs->length == inc->ifs.length && strcmp(str, inc->path)==0) {
+		if (ifs->length == inc->ifs.length && streq(str, inc->path)) {
 			vector_iterator iter = vector_iterate(ifs);
 			int br=0;
 			while (vector_next(&iter)) {
 				if_t* other = vector_get(&inc->ifs, iter.i-1);
-				if (strcmp(((if_t*)iter.x)->cond, other->cond)!=0) {
+				if (!streq(((if_t*)iter.x)->cond, other->cond)) {
 					br=1;
 					break;
 				}
@@ -675,7 +675,7 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 	return NULL;
 }
 
-object *parse_global_object(state *state) {
+object_t*parse_global_object(state *state) {
   parse_skip(state);
   if (skip_sep(state)) return NULL;
 
@@ -771,7 +771,7 @@ object *parse_global_object(state *state) {
       &state->deps);  // reset deps (instead of allocating a new object and
                       // using super, we can just use a dep buffer in state)
 
-  object *ty = parse_object(state, NULL, static_);
+	object_t*ty = parse_object(state, NULL, static_);
   char *reset = state->file;  // reset to ty if not a global variable/function
 
   token name_tok = parse_token(state);
@@ -782,7 +782,7 @@ object *parse_global_object(state *state) {
   char *after_name = state->file;
   parse_ws(state);
 
-  object *obj;
+	object_t*obj;
 
   if (*state->file == '=') {  // global
     obj = object_new(state);
@@ -852,7 +852,7 @@ object *parse_global_object(state *state) {
   return obj;
 }
 
-void pub_deps(file *file, object *obj) {
+void pub_deps(file *file, object_t*obj) {
   if (obj->pub) return;  // already marked
   obj->pub = 1;
 
@@ -863,7 +863,7 @@ void pub_deps(file *file, object *obj) {
 
     vector_iterator iter_objs = vector_iterate(objs_dep);
     while (vector_next(&iter_objs)) {
-      pub_deps(file, *(object **)iter_objs.x);
+      pub_deps(file, *(object_t**)iter_objs.x);
     }
   }
 }
@@ -877,7 +877,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 		if_t *file_if = file_if_iter.x;
 		if_t *obj_if = vector_get(new_ifs, file_if_iter.i - 1);
 
-		if (!obj_if || strcmp(obj_if->cond, file_if->cond) != 0 ||
+		if (!obj_if || !streq(obj_if->cond, file_if->cond) ||
 				obj_if->kind != file_if->kind) {
 			remove_to = file_if_iter.i - 1;
 			break;
@@ -912,7 +912,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 }
 
 void add_file(state *state, char *path, char *filename) {
-  if (strcmp(ext(filename), ".c") != 0) return;
+  if (!streq(ext(filename), ".c")) return;
   path = realpath(path, NULL);
 
   if (!path) {
@@ -944,7 +944,7 @@ void add_file(state *state, char *path, char *filename) {
 
   new_file->objects = map_new();
   map_configure_string_key(&new_file->objects, sizeof(vector_t));
-  new_file->sorted_objects = vector_new(sizeof(object *));
+  new_file->sorted_objects = vector_new(sizeof(object_t*));
 
   new_file->deps = vector_new(sizeof(char *));
 
@@ -976,7 +976,7 @@ void recurse_add_file(state *state, tinydir_file file) {
 
     for (; dir.has_next; tinydir_next(&dir)) {
       tinydir_readfile(&dir, &file);
-			if (strcmp(file.name, ".")==0 || strcmp(file.name, "..")==0 || strcmp(file.name, "./")==0)
+			if (streq(file.name, ".") || streq(file.name, "..") || streq(file.name, "./"))
 				continue;
 
       recurse_add_file(state, file);
@@ -997,7 +997,7 @@ int main(int argc, char **argv) {
   // PARSE STEP: GO THROUGH ALL FILES AND PARSE OBJECTS N STUFF
   for (int i = 1; i < argc; i++) {
     char *path = argv[i];
-    if (strcmp(path, "--pub") == 0) {
+    if (streq(path, "--pub")) {
       pub = 1;
 
       continue;
@@ -1021,7 +1021,7 @@ int main(int argc, char **argv) {
     // remove declared dependencies
     vector_iterator obj_iter = vector_iterate(&this->sorted_objects);
     while (vector_next(&obj_iter)) {
-      object *obj = *(object **)obj_iter.x;
+			object_t*obj = *(object_t**)obj_iter.x;
 
       // enable for.. debugging ;)
       // printf("%s: %s\n\n", *(char**)file_iter.key, obj->declaration);
@@ -1040,7 +1040,7 @@ int main(int argc, char **argv) {
         if (dep_decls) {
           vector_iterator dep_decl_iter = vector_iterate(dep_decls);
           while (vector_next(&dep_decl_iter)) {
-            if ((*(object **)dep_decl_iter.x)->object_id < obj->object_id) {
+            if ((*(object_t**)dep_decl_iter.x)->object_id < obj->object_id) {
               continue;
             }
           }
@@ -1069,7 +1069,7 @@ int main(int argc, char **argv) {
 
       vector_iterator obj_iter = vector_iterate(&this->sorted_objects);
       while (vector_next(&obj_iter)) {
-        object *obj = *(object **)obj_iter.x;
+				object_t*obj = *(object_t**)obj_iter.x;
 
         vector_iterator dep_iter = vector_iterate(&obj->deps);
         while (vector_next(&dep_iter)) {
@@ -1080,7 +1080,7 @@ int main(int argc, char **argv) {
 
           vector_iterator iter_objs = vector_iterate(inc_objs);
           while (vector_next(&iter_objs)) {
-            pub_deps(inc_file, *(object **)iter_objs.x);
+            pub_deps(inc_file, *(object_t**)iter_objs.x);
           }
 
           // set obj to include inc_iter.i, in case obj ever gets published
@@ -1098,7 +1098,7 @@ int main(int argc, char **argv) {
 
         vector_iterator iter_objs = vector_iterate(inc_objs);
         while (vector_next(&iter_objs)) {
-          pub_deps(inc_file, *(object **)iter_objs.x);
+          pub_deps(inc_file, *(object_t**)iter_objs.x);
         }
       }
     }
@@ -1133,7 +1133,7 @@ int main(int argc, char **argv) {
 
     vector_iterator ordered_iter = vector_iterate(&gen_this->sorted_objects);
     while (vector_next(&ordered_iter)) {
-      object *ordered_obj = *(object **)ordered_iter.x;
+			object_t*ordered_obj = *(object_t**)ordered_iter.x;
 
       if ((!pub && !ordered_obj->pub) || !ordered_obj->declaration) continue;
 

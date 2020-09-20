@@ -21,6 +21,7 @@ void* heapcpy(size_t size, const void* val);
 char* heapcpystr(const char* str);
 char* heapcpysubstr(const char* begin, size_t len);
 char* heapstr(const char* fmt, ...);
+int streq(char* str1, char* str2);
 void* resize(void* ptr, size_t size);
 char* read_file(char* path);
 char *ext(char *filename);
