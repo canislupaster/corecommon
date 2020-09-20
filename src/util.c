@@ -188,3 +188,28 @@ void memcheck() {
 	ALLOCATIONS.initialized = 0;
 }
 #endif
+
+//kinda copied from https://nachtimwald.com/2017/09/24/hex-encode-and-decode-in-c/
+//since im too lazy to type all these ifs
+char hexchar(char hex) {
+	if (hex >= '0' && hex <= '9') {
+		return hex - '0';
+	} else if (hex >= 'A' && hex <= 'F') {
+		return hex - 'A' + 10;
+	} else if (hex >= 'a' && hex <= 'f') {
+		return hex - 'a' + 10;
+	} else {
+		return 0;
+	}
+}
+
+void charhex(unsigned char chr, char* out) {
+	char first = (char)(chr % 16u);
+	if (first < 10) out[1] = first+'0';
+	else out[1] = (first-10) + 'A';
+
+	chr /= 16;
+
+	if (chr < 10) out[0] = chr+'0';
+	else out[0] = (chr-10) + 'A';
+}
