@@ -111,6 +111,25 @@ char* heapstr(const char* fmt, ...) {
 	return strp;
 }
 
+char* stradd(char* str1, char* str2) {
+	char* s = heap(strlen(str1) + strlen(str2) + 1);
+	memcpy(s, str1, strlen(str1));
+	memcpy(s+strlen(str1), str2, strlen(str2)+1);
+	return s;
+}
+
+char* strpre(char* str, char* prefix) {
+	char* s = stradd(prefix, str);
+	drop(str);
+	return s;
+}
+
+char* straffix(char* str, char* affix) {
+	char* s = stradd(str, affix);
+	drop(str);
+	return s;
+}
+
 //im tired of strcmp
 int streq(char* str1, char* str2) {
 	return strcmp(str1, str2)==0;
@@ -156,6 +175,18 @@ char* read_file(char* path) {
   str[len] = 0;
 
 	return str;
+}
+
+char* path_trunc(char* path, unsigned up) {
+	char* end = path + strlen(path);
+	if (end == path) return path;
+
+	while (up>0) {
+		do end--; while (end>path && *end != '/');
+		up--;
+	}
+
+	return heapcpysubstr(path, end-path);
 }
 
 //utility fn

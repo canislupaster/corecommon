@@ -15,10 +15,43 @@ void vec3cpy(const vec3 from, vec3 to) {
 	memcpy(to, from, sizeof(vec3));
 }
 
-void vec3scale(vec3 v, vec3 v2, float s) {
-	v2[0] *= v[0]*s;
-	v2[1] *= v[1]*s;
-	v2[2] *= v[2]*s;
+void vec3scale(vec3 v, vec3 out, float s) {
+	out[0] *= v[0]*s;
+	out[1] *= v[1]*s;
+	out[2] *= v[2]*s;
+}
+
+void vec3cross(vec3 v1, vec3 v2, vec3 out) {
+	out[0] = v1[1]*v2[2] - v2[1]*v1[2];
+	out[1] = v1[0]*v2[2] - v2[0]*v1[2];
+	out[2] = v1[0]*v2[1] - v2[0]*v1[1];
+}
+
+void vec3add(vec3 v1, vec3 v2, vec3 out) {
+	out[0] = v1[0] + v2[0];
+	out[1] = v1[1] + v2[1];
+	out[2] = v1[2] + v2[2];
+}
+
+void vec3sub(vec3 v1, vec3 v2, vec3 out) {
+	out[0] = v1[0] - v2[0];
+	out[1] = v1[1] - v2[1];
+	out[2] = v1[2] - v2[2];
+}
+
+void vec3mul(vec3 v1, vec3 v2, vec3 out) {
+	out[0] = v1[0] * v2[0];
+	out[1] = v1[1] * v2[1];
+	out[2] = v1[2] * v2[2];
+}
+
+void vec3normalize(vec3 v) {
+	vec3mul(v, v, v);
+	float s = 1/(v[0]+v[1]+v[2]);
+	vec3scale(v, v, s);
+	v[0] = sqrtf(v[0]);
+	v[1] = sqrtf(v[1]);
+	v[2] = sqrtf(v[2]);
 }
 
 //3d growable volume
@@ -39,11 +72,11 @@ float* axis_get(axis_t* axis, int* indices, char* exists) {
 	//expansion of a cubic volume, completes binomials, and hopefully fast too
 	//notice how the layout is such that the d2 of a plane follows to the next plane, while d3 is transverse
 	if (indices[0] > indices[1] && indices[0] > indices[2]) { //yz plane
-		i = indices[0]^3 + indices[1]*indices[0] + indices[2];
+		i = indices[0]*indices[0]*indices[0] + indices[1]*indices[0] + indices[2];
 	} else if (indices[1] > indices[2] && indices[1] >= indices[0]) { //zx plane
-		i = indices[1]^3 + indices[1]^2 + indices[2]*(indices[1]+1) + indices[0];
+		i = indices[1]*indices[1]*indices[1] + indices[1]*indices[1] + indices[2]*(indices[1]+1) + indices[0];
 	} else if (indices[2] >= indices[0] && indices[2] >= indices[1]) { //xy plane
-		i = indices[2]^3 + indices[2]*(2*indices[2]+1) + indices[0]*(indices[2]+1) + indices[1];
+		i = indices[2]*indices[2]*indices[2] + indices[2]*(2*indices[2]+1) + indices[0]*(indices[2]+1) + indices[1];
 	}
 
 	return vector_setget(&axis->data, i, exists);
@@ -60,7 +93,7 @@ typedef struct {
 	float* x;
 } axis_iter_t;
 
-axis_iter_t axis_iter(axis_t* axis, char i) {
+axis_iter_t axis_iter(axis_t* axis) {
 	return (axis_iter_t){.axis=axis, .i=0, .d=0, .c=-1, .indices={0,0,0}};
 }
 

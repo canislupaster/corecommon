@@ -21,9 +21,13 @@ void* heapcpy(size_t size, const void* val);
 char* heapcpystr(const char* str);
 char* heapcpysubstr(const char* begin, size_t len);
 char* heapstr(const char* fmt, ...);
+char* stradd(char* str1, char* str2);
+char* strpre(char* str, char* prefix);
+char* straffix(char* str, char* affix);
 int streq(char* str1, char* str2);
 void* resize(void* ptr, size_t size);
 char* read_file(char* path);
+char* path_trunc(char* path, unsigned up);
 char *ext(char *filename);
 #if BUILD_DEBUG
 void memcheck();

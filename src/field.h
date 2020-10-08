@@ -4,29 +4,30 @@
 #include <math.h>
 #include <stdint.h>
 #include <emmintrin.h>
-#define MAX_DIM 3
 typedef float vec3[3];
 extern vec3 VEC3_0;
 extern vec3 VEC3_1;
 void vec3cpy(const vec3 from, vec3 to);
-void vec3scale(vec3 v, vec3 v2, float s);
+void vec3scale(vec3 v, vec3 out, float s);
 #include "vector.h"
 typedef struct {
 	vector_t data;
-	vector_t neg_data;
 } axis_t;
-void axis_init(axis_t* axis, char i);
-float* axis_get(axis_t* axis, int* indices, char i, char* exists);
+axis_t axis_new();
+float* axis_get(axis_t* axis, int* indices, char* exists);
 typedef struct {
 	axis_t* axis;
-	char i;
-	char init;
-	int indices[MAX_DIM];
-	axis_t* a[MAX_DIM];
+	//i dont care
+	int i;
+	int d;
+	char c;
+
+	int indices[3];
 	float* x;
 } axis_iter_t;
-axis_iter_t axis_iter(axis_t* axis, char i);
+axis_iter_t axis_iter(axis_t* axis);
 int axis_next(axis_iter_t* iter);
+unsigned axis_length(axis_t* axis);
 typedef struct {
 	float bulk; //average uniaxial stress
 	float viscosity; //stress multiplier of expansion

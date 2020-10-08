@@ -386,28 +386,6 @@ char *token_str(state *state, token tok) {
   return str;
 }
 
-char *prefix(char *str, char *prefix) {
-  if (*prefix == 0) return str;
-
-  char *new_str = heap(strlen(str) + strlen(prefix) + 1);
-  memcpy(new_str, prefix, strlen(prefix));
-  memcpy(new_str + strlen(prefix), str, strlen(str) + 1);  // copy null byte
-  free(str);
-
-  return new_str;
-}
-
-char *affix(char *str, char *affix) {
-  if (*affix == 0) return str;
-
-  char *new_str = heap(strlen(str) + strlen(affix) + 1);
-  memcpy(new_str, str, strlen(str) + 1);
-  memcpy(new_str + strlen(str), affix, strlen(affix) + 1);
-  free(str);
-
-  return new_str;
-}
-
 char *dirname(char *filename) {
   char *slash = NULL;
 
@@ -568,7 +546,7 @@ object_t*parse_object(state *state, object_t*super, int static_) {
     name = token_str(state, parse_token(state));
 
     parse_sep(state);
-    obj->declaration = affix(range(start, state->file), ";");
+    obj->declaration = straffix(range(start, state->file), ";");
 
     skip_sep(state);
   } else if (token_eq(first, "struct") || token_eq(first, "union") || token_eq(first, "enum")) {
@@ -609,7 +587,7 @@ object_t*parse_object(state *state, object_t*super, int static_) {
 					}
 				}
 
-        if (!super) obj->declaration = affix(range(start, state->file), ";");
+        if (!super) obj->declaration = straffix(range(start, state->file), ";");
 
         break;
       }
@@ -675,7 +653,7 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 	return NULL;
 }
 
-object_t*parse_global_object(state *state) {
+object_t* parse_global_object(state *state) {
   parse_skip(state);
   if (skip_sep(state)) return NULL;
 
@@ -705,7 +683,7 @@ object_t*parse_global_object(state *state) {
     }
 
     char *path =
-        prefix(token_str(state, parse_string(state)), dirname(state->path));
+        strpre(token_str(state, parse_string(state)), dirname(state->path));
 
     path[strlen(path) - 1] = 'c';  //.h -> .c for finds and gen
 
@@ -818,7 +796,7 @@ object_t*parse_global_object(state *state) {
         parse_token(state);  // parse argument name
     }
 
-    obj->declaration = affix(range(start, state->file), ";");
+    obj->declaration = straffix(range(start, state->file), ";");
 
     // i changed this it may break everything
     // i vividly remember having to fix it already im scared

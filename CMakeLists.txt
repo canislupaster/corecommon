@@ -18,6 +18,8 @@ else ()
 	target_compile_options(headergen PUBLIC -O0)
 endif ()
 
+add_custom_target(genheader_corecommon WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} COMMAND headergen ${CMAKE_CURRENT_SOURCE_DIR}/src --pub)
+
 #enable_testing()
 #add_executable(hashtable_test tests/hashtable_test.c)
 #add_test(hashtable_test hashtable_test)
