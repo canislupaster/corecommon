@@ -54,6 +54,19 @@ void vec3normalize(vec3 v) {
 	v[2] = sqrtf(v[2]);
 }
 
+void vec3neg(vec3 v, vec3 out) {
+	vec3scale(v, out, -1);
+}
+
+float vec_dot(float* v1, float* v2, unsigned long len) {
+	float out=0;
+	for (unsigned long i=0; i<=len; i++) {
+		out += *(v1++) * *(v2++);
+	}
+
+	return out;
+}
+
 //3d growable volume
 typedef struct {
 	vector_t data;
@@ -160,18 +173,16 @@ typedef struct field {
 	generator_t gen;
 
 	vec3 force;
-	float turbulence; //uniaxial turbulence/diffusion multiplier
+	float turbulence; //turbulence/diffusion multiplier
 
 	//particle (in cell) physics
 	struct field* collision; //field permitivity, affected by stress
-	struct field* velocity;
+	struct field* acceleration; //base field
 
-	stress_simple_t stress;
+	stress_simple_t stress; //viscosity
 
 	//other dynamics
-	struct field* affector; //curl of (magnetic) field affected by electromotive force (every timestep). the flux is applied to the field
-
-	float t;
+	//struct field* affector; //curl of (magnetic) field affected by electromotive force (every timestep). the flux is applied to the field
 } field_t;
 
 field_t field_new() {
@@ -188,13 +199,11 @@ field_t field_new() {
 	field.turbulence = 0;
 
 	field.collision = NULL;
-	field.velocity = NULL;
-	field.affector = NULL;
+	field.acceleration = NULL;
+	//field.affector = NULL;
 
 	field.stress.bulk = 0;
 	field.stress.viscosity = 0;
-
-	field.t = 0;
 
 	return field;
 }
@@ -212,26 +221,45 @@ void field_generate(field_t* field, generator_t gen, vec3 pos, vec3 out) {
 	}
 }
 
-float* field_get(field_t* field, vec3 pos);
+//"differencing scheme"
+void field_getd(field_t* field, float r, int pow_off, vec3 pos, vec3 out) {
+	//copy paste
+	//sorry, its for prefremance
+	vec3 pos_unscale;
+	vec3scale(pos, pos_unscale, 1/field->scale);
+	int idx[3] = {(int)pos_unscale[0], (int)pos_unscale[1], (int)pos_unscale[2]};
 
-//box kernel (divergence is usually)
-void field_kernel_get(field_t* field, float r, float pow_off, vec3 pos) {
 	r /= field->scale;
 	int num = (int)r;
 
-	//loop num, add to pos
-	//collect, add off to pow and div by factorial
-}
+	char exists;
+	float* pos_x =  axis_get(&field->z, (int[3]){idx[0], idx[1], idx[2]}, &exists);
+	if (!exists) field_generate(field, field->gen, pos, pos_x);
 
-void field_affect(field_t* field, vec3 pos, vec3 out, vec3 in) {
-	if (field->turbulence>0) {
-		//adjust divergence to turbulence
-		
-	}
+	vec3neg(pos_x, pos_x);
 
-	if (field->collision) {
-		float* permitivity = field_get(field, pos);
-		
+	int offs[8][3] = {{1, 1, 1}, {-1, 1, 1}, {1, -1, 1}, {-1, -1, 1},
+			{1, 1, -1}, {-1, 1, -1}, {1, -1, 1}, {-1, -1, -1}};
+
+	for (int i=0; i<8; i++) {
+		int offed_pos[3] = {idx[0]+offs[i][0], idx[1]+offs[i][1], idx[2]+offs[i][2]};
+		float* res = axis_get(&field->z, offed_pos, &exists);
+
+		if (!exists) {
+			vec3 genpos;
+			vec3cpy(pos, genpos);
+			vec3add(genpos, (vec3){field->scale*(float)offs[i][0], field->scale*(float)offs[i][1], field->scale*(float)offs[i][2]}, genpos);
+			field_generate(field, field->gen, genpos, res);
+		}
+
+		vec3add(res, pos_x, res);
+		if (pow_off % 2 == 0) {
+			vec3scale(res, res, 1/field->scale);
+		} else {
+			vec3mul(res, (vec3){powf(1/((float)offs[i][0]*field->scale), 2), powf(1/((float)offs[i][1]*field->scale), 2), powf(1/((float)offs[i][2]*field->scale), 2)}, res);
+		}
+
+		vec3add(out, res, out);
 	}
 }
 

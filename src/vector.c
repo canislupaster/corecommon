@@ -107,6 +107,15 @@ void* vector_stockcpy(vector_t* vec, unsigned long length, void* data) {
 	return pos;
 }
 
+void* vector_populate(vector_t* vec, unsigned long length, void* item) {
+	void* pos = vector_stock(vec, length);
+	for (unsigned long i=0; i<length; i++) {
+		memcpy(pos + vec->size*i, item, vec->size);
+	}
+
+	return pos;
+}
+
 void* vector_stockstr(vector_t* vec, char* str) {
   return vector_stockcpy(vec, strlen(str), str);
 }
