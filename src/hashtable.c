@@ -27,8 +27,8 @@ typedef struct {
 typedef struct {
 	rwlock_t* lock;
 
-	unsigned long key_size;
-	unsigned long size;
+	unsigned key_size;
+	unsigned size;
 
 	/// hash and compare
 	uint64_t (* hash)(void*);
@@ -39,8 +39,8 @@ typedef struct {
   //free data in map_remove, before references are removed
 	void (*free)(void*);
 
-	unsigned long length;
-	unsigned long num_buckets;
+	unsigned length;
+	unsigned num_buckets;
 
 	char* buckets;
 } map_t;
@@ -49,7 +49,7 @@ typedef struct {
 	map_t* map;
 
 	char c;
-	unsigned long bucket;
+	unsigned bucket;
 
 	void* key;
 	void* x;
@@ -64,7 +64,7 @@ typedef struct {
 	uint64_t h1;
 	uint8_t h2;
 
-	unsigned long probes;
+	unsigned probes;
 
 	bucket* current;
 	/// temporary storage for c when matching
@@ -100,7 +100,7 @@ uint64_t hash_string(char** x) {
 
 typedef struct {
   char* bin;
-  unsigned long size;
+  unsigned size;
 } map_sized_t;
 
 uint64_t hash_sized(map_sized_t* x) {
@@ -150,7 +150,7 @@ void free_sized(void* x) {
   drop(sized->bin);
 }
 
-unsigned long map_bucket_size(map_t* map) {
+unsigned map_bucket_size(map_t* map) {
 	return CONTROL_BYTES + CONTROL_BYTES * map->size;
 }
 
@@ -165,18 +165,18 @@ void map_distribute(map_t* map) {
 	*map->lock = rwlock_new();
 }
 
-void map_configure(map_t* map, unsigned long size) {
+void map_configure(map_t* map, unsigned size) {
 	map->size = size + map->key_size;
 
-	unsigned long x = DEFAULT_BUCKETS * map_bucket_size(map);
+	unsigned x = DEFAULT_BUCKETS * map_bucket_size(map);
 	map->buckets = heap(x);
 
-	for (unsigned long i = 0; i < map->num_buckets; i++) {
+	for (unsigned i = 0; i < map->num_buckets; i++) {
 		memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
 	}
 }
 
-void map_configure_string_key(map_t* map, unsigned long size) {
+void map_configure_string_key(map_t* map, unsigned size) {
 	map->key_size = sizeof(char*); //string reference is default key
 
 	map->hash = (uint64_t(*)(void*)) hash_string;
@@ -185,7 +185,7 @@ void map_configure_string_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_sized_key(map_t* map, unsigned long size) {
+void map_configure_sized_key(map_t* map, unsigned size) {
 	map->key_size = sizeof(map_sized_t);
 
 	map->hash = (uint64_t(*)(void*)) hash_sized;
@@ -194,7 +194,7 @@ void map_configure_sized_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_uint64_key(map_t* map, unsigned long size) {
+void map_configure_uint64_key(map_t* map, unsigned size) {
 	map->key_size = 8;
 
 	map->hash = (uint64_t(*)(void*)) hash_uint64;
@@ -203,7 +203,7 @@ void map_configure_uint64_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_uint96_key(map_t* map, unsigned long size) {
+void map_configure_uint96_key(map_t* map, unsigned size) {
 	map->key_size = 4*3;
 
 	map->hash = (uint64_t(*)(void*)) hash_uint96;
@@ -212,8 +212,8 @@ void map_configure_uint96_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_ptr_key(map_t* map, unsigned long size) {
-	map->key_size = sizeof(unsigned long);
+void map_configure_ptr_key(map_t* map, unsigned size) {
+	map->key_size = sizeof(unsigned);
 
 	map->hash = (uint64_t(*)(void*)) hash_ptr;
 	map->compare = (int (*)(void*, void*)) compare_ptr;
@@ -489,7 +489,7 @@ static void* map_probe_remove(map_probe_iterator* probe) {
 void map_resize(map_t* map) {
 	while (map_load_factor(map)) {
 		//double
-		unsigned long old_num_buckets = map->num_buckets;
+		unsigned old_num_buckets = map->num_buckets;
 		map->num_buckets *= 2;
 
 		//use realloc in case debugging is enabled on resize
@@ -499,7 +499,7 @@ void map_resize(map_t* map) {
 			abort();
 		}
 
-		for (unsigned long i = old_num_buckets; i < map->num_buckets; i++) {
+		for (unsigned i = old_num_buckets; i < map->num_buckets; i++) {
 			memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
 		}
 

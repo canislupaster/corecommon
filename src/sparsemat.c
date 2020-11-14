@@ -19,7 +19,7 @@ typedef struct {
 } sparsemat_t;
 
 void sparse_mul(sparsemat_t* mat, float* v, float* out) {
-	for (unsigned long i=0; i<mat->rows.length; i++) {
+	for (unsigned i=0; i<mat->rows.length; i++) {
 		sparsemat_elem1_t* e = &((sparsemat_elem1_t*)mat->rows.data)[i];
 		float* vptr = v;
 
@@ -29,7 +29,7 @@ void sparse_mul(sparsemat_t* mat, float* v, float* out) {
 }
 
 void sparse_cgsolve(sparsemat_t* mat, float* in, float* buf, float* out) {
-	for (unsigned long i=0; i<mat->cols.length; i++) {
+	for (unsigned i=0; i<mat->cols.length; i++) {
 
 	}
 }

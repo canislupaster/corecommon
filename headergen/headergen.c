@@ -16,7 +16,7 @@ typedef struct {
 
 typedef struct {
   struct file *file;
-  unsigned long object_id;  // indexes into sorted_objects
+  unsigned object_id;  // indexes into sorted_objects
   char *declaration;
   vector_t deps;  // char*
   vector_t include_deps;
@@ -493,7 +493,7 @@ int skip_type(state *state) {
   }
 }
 
-object_t*parse_object(state *state, object_t*super, int static_) {
+object_t* parse_object(state *state, object_t*super, int static_) {
   if (skip_type(state)) {
     return NULL;
   }
@@ -657,12 +657,8 @@ object_t* parse_global_object(state *state) {
   parse_skip(state);
   if (skip_sep(state)) return NULL;
 
-  int static_ = 0;
-  if (skip_word(state, "static")) {
-    static_ = 1;
-  }
+	char *start = state->file;
 
-  char *start = state->file;
   if (skip_word(state, "#include")) {
     parse_ws(state);
     if (*state->file != '"') {
@@ -749,7 +745,12 @@ object_t* parse_global_object(state *state) {
       &state->deps);  // reset deps (instead of allocating a new object and
                       // using super, we can just use a dep buffer in state)
 
-	object_t*ty = parse_object(state, NULL, static_);
+	int static_ = 0, inline_ = 0;
+	static_ = skip_word(state, "static");
+	parse_ws(state);
+	inline_ = skip_word(state, "inline");
+
+	object_t* ty = parse_object(state, NULL, static_ && !inline_);
   char *reset = state->file;  // reset to ty if not a global variable/function
 
   token name_tok = parse_token(state);
@@ -796,7 +797,7 @@ object_t* parse_global_object(state *state) {
         parse_token(state);  // parse argument name
     }
 
-    obj->declaration = straffix(range(start, state->file), ";");
+		if (!inline_) obj->declaration = straffix(range(start, state->file), ";");
 
     // i changed this it may break everything
     // i vividly remember having to fix it already im scared
@@ -821,12 +822,15 @@ object_t* parse_global_object(state *state) {
         vector_pushcpy(&state->current->deps, &str);
       }
     }
+
+		if (inline_) obj->declaration = range(start, state->file);
   } else {
     state->file = reset;
     return ty;
   }
 
-  if (!static_) object_push(state, name, obj);
+	//assumed static inline is public
+  if (!static_ || inline_) object_push(state, name, obj);
   return obj;
 }
 
@@ -907,7 +911,7 @@ void add_file(state *state, char *path, char *filename) {
 
   // pretty much copied from frontend
   fseek(handle, 0, SEEK_END);
-  unsigned long len = ftell(handle);
+  unsigned len = ftell(handle);
 
   rewind(handle);
 

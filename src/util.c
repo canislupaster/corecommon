@@ -163,7 +163,7 @@ char* read_file(char* path) {
   }
 
   fseek(handle, 0, SEEK_END);
-  unsigned long len = ftell(handle);
+  unsigned len = ftell(handle);
 
   rewind(handle);
 

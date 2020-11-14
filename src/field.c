@@ -15,10 +15,10 @@ void vec3cpy(const vec3 from, vec3 to) {
 	memcpy(to, from, sizeof(vec3));
 }
 
-void vec3scale(vec3 v, vec3 out, float s) {
-	out[0] *= v[0]*s;
-	out[1] *= v[1]*s;
-	out[2] *= v[2]*s;
+void vec3scale(vec3 v, float s, vec3 out) {
+	out[0] = v[0]*s;
+	out[1] = v[1]*s;
+	out[2] = v[2]*s;
 }
 
 void vec3cross(vec3 v1, vec3 v2, vec3 out) {
@@ -45,22 +45,49 @@ void vec3mul(vec3 v1, vec3 v2, vec3 out) {
 	out[2] = v1[2] * v2[2];
 }
 
-void vec3normalize(vec3 v) {
-	vec3mul(v, v, v);
-	float s = 1/(v[0]+v[1]+v[2]);
-	vec3scale(v, v, s);
-	v[0] = sqrtf(v[0]);
-	v[1] = sqrtf(v[1]);
-	v[2] = sqrtf(v[2]);
+void vec3div(vec3 v1, vec3 v2, vec3 out) {
+	out[0] = v1[0] / v2[0];
+	out[1] = v1[1] / v2[1];
+	out[2] = v1[2] / v2[2];
+}
+
+void vec3normalize(vec3 v, vec3 out) {
+	vec3mul(v, v, out);
+	vec3scale(out, 1/(out[0]+out[1]+out[2]), out);
+	out[0] = sqrtf(out[0]);
+	out[1] = sqrtf(out[1]);
+	out[2] = sqrtf(out[2]);
+}
+
+float vec3mag(vec3 v) {
+	return sqrtf(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+}
+
+float vec3sum(vec3 v) {
+	return v[0] + v[1] + v[2];
+}
+
+float vec3dot(vec3 v1, vec3 v2) {
+	return v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+}
+
+int vec3eq(vec3 v1, vec3 v2) {
+	return v1[0]==v2[0] && v1[1]==v2[1] && v1[2]==v2[2];
+}
+
+void vec3abs(vec3 v, vec3 out) {
+	out[0] = fabsf(v[0]);
+	out[1] = fabsf(v[1]);
+	out[2] = fabsf(v[2]);
 }
 
 void vec3neg(vec3 v, vec3 out) {
-	vec3scale(v, out, -1);
+	vec3scale(v, -1, out);
 }
 
-float vec_dot(float* v1, float* v2, unsigned long len) {
+float vec_dot(float* v1, float* v2, unsigned len) {
 	float out=0;
-	for (unsigned long i=0; i<=len; i++) {
+	for (unsigned i=0; i<=len; i++) {
 		out += *(v1++) * *(v2++);
 	}
 
@@ -226,7 +253,7 @@ void field_getd(field_t* field, float r, int pow_off, vec3 pos, vec3 out) {
 	//copy paste
 	//sorry, its for prefremance
 	vec3 pos_unscale;
-	vec3scale(pos, pos_unscale, 1/field->scale);
+	vec3scale(pos, 1/field->scale, pos_unscale);
 	int idx[3] = {(int)pos_unscale[0], (int)pos_unscale[1], (int)pos_unscale[2]};
 
 	r /= field->scale;
@@ -254,7 +281,7 @@ void field_getd(field_t* field, float r, int pow_off, vec3 pos, vec3 out) {
 
 		vec3add(res, pos_x, res);
 		if (pow_off % 2 == 0) {
-			vec3scale(res, res, 1/field->scale);
+			vec3scale(res, 1/field->scale, res);
 		} else {
 			vec3mul(res, (vec3){powf(1/((float)offs[i][0]*field->scale), 2), powf(1/((float)offs[i][1]*field->scale), 2), powf(1/((float)offs[i][2]*field->scale), 2)}, res);
 		}
@@ -265,7 +292,7 @@ void field_getd(field_t* field, float r, int pow_off, vec3 pos, vec3 out) {
 
 float* field_get(field_t* field, vec3 pos) {
 	vec3 pos_unscale;
-	vec3scale(pos, pos_unscale, 1/field->scale);
+	vec3scale(pos, 1/field->scale, pos_unscale);
 
 	int idx[3] = {(int)pos_unscale[0], (int)pos_unscale[1], (int)pos_unscale[2]};
 	char exists;

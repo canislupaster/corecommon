@@ -3,12 +3,12 @@
 #include <stdio.h>
 #include <time.h>
 
-static char *rand_string(char *str, unsigned long size)
+static char *rand_string(char *str, unsigned size)
 {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK...";
     if (size) {
         --size;
-        for (unsigned long n = 0; n < size; n++) {
+        for (unsigned n = 0; n < size; n++) {
             int key = rand() % (int) (strlen(charset) - 1);
             str[n] = charset[key];
         }
@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
 
     srand(743);
 
-    for (unsigned long i=0; i<1000; i++) {
+    for (unsigned i=0; i<1000; i++) {
         char* key = malloc(31);
         rand_string(key, 30);
 

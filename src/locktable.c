@@ -9,7 +9,7 @@ typedef struct {
   vector_t mtxs;
 } locktable_t;
 
-locktable_t locktable_new(unsigned long size) {
+locktable_t locktable_new(unsigned size) {
   locktable_t locktable;
   locktable.mtxs = vector_new(sizeof(mtx_t));
   vector_stock(&locktable.mtxs, size);

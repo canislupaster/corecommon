@@ -8,7 +8,20 @@ typedef float vec3[3];
 extern vec3 VEC3_0;
 extern vec3 VEC3_1;
 void vec3cpy(const vec3 from, vec3 to);
-void vec3scale(vec3 v, vec3 out, float s);
+void vec3scale(vec3 v, float s, vec3 out);
+void vec3cross(vec3 v1, vec3 v2, vec3 out);
+void vec3add(vec3 v1, vec3 v2, vec3 out);
+void vec3sub(vec3 v1, vec3 v2, vec3 out);
+void vec3mul(vec3 v1, vec3 v2, vec3 out);
+void vec3div(vec3 v1, vec3 v2, vec3 out);
+void vec3normalize(vec3 v, vec3 out);
+float vec3mag(vec3 v);
+float vec3sum(vec3 v);
+float vec3dot(vec3 v1, vec3 v2);
+int vec3eq(vec3 v1, vec3 v2);
+void vec3abs(vec3 v, vec3 out);
+void vec3neg(vec3 v, vec3 out);
+float vec_dot(float* v1, float* v2, unsigned len);
 #include "vector.h"
 typedef struct {
 	vector_t data;
@@ -49,23 +62,19 @@ typedef struct field {
 	generator_t gen;
 
 	vec3 force;
-	float turbulence; //uniaxial turbulence/diffusion multiplier
+	float turbulence; //turbulence/diffusion multiplier
 
 	//particle (in cell) physics
 	struct field* collision; //field permitivity, affected by stress
-	struct field* velocity;
+	struct field* acceleration; //base field
 
-	stress_simple_t stress;
+	stress_simple_t stress; //viscosity
 
 	//other dynamics
-	struct field* affector; //curl of (magnetic) field affected by electromotive force (every timestep). the flux is applied to the field
-
-	float t;
+	//struct field* affector; //curl of (magnetic) field affected by electromotive force (every timestep). the flux is applied to the field
 } field_t;
 field_t field_new();
 void field_fromint(field_t* field, int* indices, vec3 out);
 void field_generate(field_t* field, generator_t gen, vec3 pos, vec3 out);
-float* field_get(field_t* field, vec3 pos);
-void field_kernel_get(field_t* field, float r, float pow_off, vec3 pos);
-void field_affect(field_t* field, vec3 pos, vec3 out, vec3 in);
+void field_getd(field_t* field, float r, int pow_off, vec3 pos, vec3 out);
 float* field_get(field_t* field, vec3 pos);

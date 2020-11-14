@@ -18,8 +18,8 @@ typedef struct {
 typedef struct {
 	rwlock_t* lock;
 
-	unsigned long key_size;
-	unsigned long size;
+	unsigned key_size;
+	unsigned size;
 
 	/// hash and compare
 	uint64_t (* hash)(void*);
@@ -30,8 +30,8 @@ typedef struct {
   //free data in map_remove, before references are removed
 	void (*free)(void*);
 
-	unsigned long length;
-	unsigned long num_buckets;
+	unsigned length;
+	unsigned num_buckets;
 
 	char* buckets;
 } map_t;
@@ -39,7 +39,7 @@ typedef struct {
 	map_t* map;
 
 	char c;
-	unsigned long bucket;
+	unsigned bucket;
 
 	void* key;
 	void* x;
@@ -53,7 +53,7 @@ typedef struct {
 	uint64_t h1;
 	uint8_t h2;
 
-	unsigned long probes;
+	unsigned probes;
 
 	bucket* current;
 	/// temporary storage for c when matching
@@ -68,7 +68,7 @@ extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
 typedef struct {
   char* bin;
-  unsigned long size;
+  unsigned size;
 } map_sized_t;
 uint64_t hash_sized(map_sized_t* x);
 uint64_t hash_uint64(uint64_t* x);
@@ -81,15 +81,15 @@ int compare_uint96(uint32_t* left, uint32_t* right);
 int compare_ptr(void** left, void** right);
 void free_string(void* x);
 void free_sized(void* x);
-unsigned long map_bucket_size(map_t* map);
+unsigned map_bucket_size(map_t* map);
 map_t map_new();
 void map_distribute(map_t* map);
-void map_configure(map_t* map, unsigned long size);
-void map_configure_string_key(map_t* map, unsigned long size);
-void map_configure_sized_key(map_t* map, unsigned long size);
-void map_configure_uint64_key(map_t* map, unsigned long size);
-void map_configure_uint96_key(map_t* map, unsigned long size);
-void map_configure_ptr_key(map_t* map, unsigned long size);
+void map_configure(map_t* map, unsigned size);
+void map_configure_string_key(map_t* map, unsigned size);
+void map_configure_sized_key(map_t* map, unsigned size);
+void map_configure_uint64_key(map_t* map, unsigned size);
+void map_configure_uint96_key(map_t* map, unsigned size);
+void map_configure_ptr_key(map_t* map, unsigned size);
 int map_load_factor(map_t* map);
 map_iterator map_iterate(map_t* map);
 int map_next_unlocked(map_iterator* iterator);
