@@ -27,6 +27,8 @@ char* straffix(char* str, char* affix);
 int streq(char* str1, char* str2);
 void* resize(void* ptr, size_t size);
 char* read_file(char* path);
+int max(int a, int b);
+int min(int a, int b);
 char* path_trunc(char* path, unsigned up);
 char *ext(char *filename);
 #if BUILD_DEBUG

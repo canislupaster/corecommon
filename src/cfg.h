@@ -30,6 +30,7 @@ char* cfgdir();
 #include "hashtable.h"
 void configure(map_t* default_cfg, char* file);
 void save_configure(map_t* cfg, char* file);
+void cfg_free(map_t* cfg);
 void cfg_add(map_t* cfg, const char* name, cfg_ty ty, cfg_data data);
 int* cfg_get(map_t* cfg, const char* name);
 int* cfg_val(map_t* cfg, const char* name);

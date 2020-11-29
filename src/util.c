@@ -177,6 +177,14 @@ char* read_file(char* path) {
 	return str;
 }
 
+int max(int a, int b) {
+	return a>b?a:b;
+}
+
+int min(int a, int b) {
+	return a>b?b:a;
+}
+
 char* path_trunc(char* path, unsigned up) {
 	char* end = path + strlen(path);
 	if (end == path) return path;

@@ -129,6 +129,7 @@ filemap_partial_object filemap_insert(filemap_index_t* index,
 int filemap_remove(filemap_index_t* index, char* key, uint64_t key_size);
 filemap_iterator filemap_index_iterate(filemap_index_t* index);
 filemap_partial_object filemap_add(filemap_list_t* list, filemap_object* obj);
+#include "util.h"
 typedef struct {
 	filemap_ordered_list_t* list;
 	uint64_t page;

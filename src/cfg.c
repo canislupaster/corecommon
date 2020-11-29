@@ -157,7 +157,7 @@ void configure(map_t* default_cfg, char* file) {
 			case cfg_float: succ=parse_float(&cfgc, &val->data.float_); break;
 			case cfg_str: {
 				val->data.str = parse_string(&cfgc);
-				succ = val->data.str ? 1 : 0;
+				succ = val->data.str!=NULL;
 			}
 		}
 
@@ -165,7 +165,7 @@ void configure(map_t* default_cfg, char* file) {
 	}
 }
 
-//saves and frees config
+//saves cfg
 void save_configure(map_t* cfg, char* file) {
 	char* path = heapstr("%s/%s", cfgdir(), file);
 	FILE* f = fopen(path, "w"); drop(path);
@@ -183,8 +183,7 @@ void save_configure(map_t* cfg, char* file) {
 			case cfg_num: fprintf(f, "%i", val->data.num); break;
 			case cfg_float: fprintf(f, "%lf", val->data.float_); break;
 			case cfg_str: {
-				fprintf(f, "%s", val->data.str);
-				drop(val->data.str);
+				fprintf(f, "\"%s\"", val->data.str);
 				break;
 			}
 		}
@@ -193,6 +192,24 @@ void save_configure(map_t* cfg, char* file) {
 	}
 
 	fclose(f);
+}
+
+void cfg_free(map_t* cfg) {
+	map_iterator iter = map_iterate(cfg);
+	while (map_next(&iter)) {
+		config_val* val = iter.x;
+		if (val->is_default) continue;
+
+		switch (val->ty) {
+			case cfg_str: {
+				drop(val->data.str);
+				break;
+			}
+			default:;
+		}
+	}
+
+	map_free(cfg);
 }
 
 void cfg_add(map_t* cfg, const char* name, cfg_ty ty, cfg_data data) {

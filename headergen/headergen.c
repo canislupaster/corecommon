@@ -1,3 +1,5 @@
+//i just realized this is terrible ill probably rewrite it when i get bored enough
+
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,9 +130,19 @@ int parse_comment(state *state) {
     return 0;
 }
 
-void parse_ws(state *state) {
-  while (ws(state)) state->file++;
-  if (parse_comment(state)) parse_ws(state);
+int skip_ws_comment(state *state) {
+	int skipped=0;
+  while (ws(state)) {
+  	state->file++;
+  	skipped=1;
+  }
+
+  if (parse_comment(state)) {
+		skip_ws_comment(state);
+  	skipped=1;
+  }
+
+  return skipped;
 }
 
 void parse_define(state *state) {
@@ -200,9 +212,13 @@ int skip_nows(state *state) {
   return 0;
 }
 
-void parse_skip(state *state) {
-  parse_ws(state);
-  while (skip_nows(state)) parse_ws(state);
+int skip(state *state) {
+	int skipped=0;
+	while (skip_ws_comment(state) || skip_nows(state)) {
+		skipped=1;
+	}
+
+	return skipped;
 }
 
 int skip_sep(state *state) {
@@ -214,7 +230,6 @@ int skip_sep(state *state) {
 }
 
 int parse_start_paren(state *state) {
-  parse_skip(state);
   if (!*state->file) return 0;
 
   if (*state->file == '(' && state->parens == 0) {
@@ -225,9 +240,7 @@ int parse_start_paren(state *state) {
 }
 
 int parse_end_paren(state *state) {
-  parse_skip(state);
   if (!*state->file) return 1;
-  if (skip_sep(state)) return parse_end_paren(state);
 
   if (*state->file == ')') {
     state->file++;
@@ -237,8 +250,9 @@ int parse_end_paren(state *state) {
       state->braces--;
       return parse_end_paren(state);
     }
-  } else
+  } else {
     return 0;
+	}
 }
 
 int skip_paren(state *state) {
@@ -250,22 +264,13 @@ int skip_paren(state *state) {
     state->parens--;
     state->file++;
     return 1;
-  } else
+  } else {
     return 0;
-}
-
-int parse_peek_brace(state *state) {
-  parse_skip(state);
-  if (!*state->file) return 0;
-
-  if (*state->file == '{' && state->braces <= 0)
-    return 1;
-  else
-    return 0;
+	}
 }
 
 int parse_start_brace(state *state) {
-  parse_skip(state);
+	skip(state);
 
   if (*state->file == '{' && state->braces <= 0) {
     state->file++;
@@ -275,9 +280,7 @@ int parse_start_brace(state *state) {
 }
 
 int parse_end_brace(state *state) {
-  parse_skip(state);
-
-  if (skip_paren(state) || skip_sep(state)) return parse_end_brace(state);
+	skip(state);
 
   if (!*state->file) return 1;
 
@@ -312,15 +315,12 @@ int skip_braces(state *state) {
 }
 
 int parse_sep(state *state) {
-  parse_skip(state);
-  if (skip_braces(state) || skip_paren(state)) return parse_sep(state);
-
   return *state->file == ';';
 }
 
 /// does a crappy check to see if previous token was probably a name
 int parse_name(state *state) {
-  parse_ws(state);
+	skip_ws_comment(state);
   if (!*state->file) return 0;
 
   if (strchr("[(=,", *state->file))
@@ -347,13 +347,13 @@ token parse_token_noskip(state *state) {
 
 /// parses identifiers
 token parse_token(state *state) {
-  parse_skip(state);
+	skip(state);
 
   return parse_token_noskip(state);
 }
 
 token parse_token_braced(state *state) {
-  parse_skip(state);
+	skip(state);
   if (skip_sep(state) || skip_paren(state) || skip_braces(state)) {
     return parse_token_braced(state);
   }
@@ -447,7 +447,7 @@ void clnpath(char *path) {
 }
 
 token parse_string(state *state) {
-  parse_ws(state);
+	skip_ws_comment(state);
 
   if (*state->file == '\"') {
     token tok;
@@ -476,14 +476,8 @@ token parse_string(state *state) {
 object_t*parse_object(state *state, object_t*super, int static_);
 
 int skip_type(state *state) {
-  parse_skip(state);
-
-  if (skip_paren(state) || skip_braces(state)) {
-    return skip_type(state);
-  }
-
   if (skip_word(state, "unsigned")) {
-    parse_ws(state);
+		skip_ws_comment(state);
     skip_list(state, SKIP_TYPES, sizeof(SKIP_TYPES));
     return 1;
   } else if (skip_list(state, SKIP_TYPES, sizeof(SKIP_TYPES))) {
@@ -545,6 +539,7 @@ object_t* parse_object(state *state, object_t*super, int static_) {
 
     name = token_str(state, parse_token(state));
 
+    skip(state);
     parse_sep(state);
     obj->declaration = straffix(range(start, state->file), ";");
 
@@ -561,6 +556,7 @@ object_t* parse_object(state *state, object_t*super, int static_) {
       return NULL;
 
     token name_tok = {.start=NULL, .len=0};
+    int paren = state->parens;
     while (*state->file && *state->file != ';' && *state->file != ',') {
       if (parse_start_brace(state)) {  // otherwise fwd decl
         obj = super ? super
@@ -571,19 +567,18 @@ object_t* parse_object(state *state, object_t*super, int static_) {
 						char *str = token_str(state, parse_token(state));
 						object_ref(state, str, obj);
 					}
-
 				} else {
 					while (!parse_end_brace(state)) {
 						parse_object(state, obj, static_);  // parse field type, add deps
-						if (!parse_sep(state))
-							parse_token(state);  // parse field name or dont (ex. anonymous union)
-													 // parse any addendums
-						while (!parse_sep(state)) {
-							// i changed this did i break anything
+						skip(state);
+						if (!parse_sep(state)) parse_token(state); // parse field name or dont (ex. anonymous union)
+
+						while (!skip_sep(state)) { // parse any addendums (ex. function pointer paren)
+							skip(state);
+							if (skip_paren(state)) continue;
+							if (skip_sep(state)) break;
 							parse_object(state, obj, 1);
 						}
-
-						parse_ws(state);
 					}
 				}
 
@@ -593,8 +588,9 @@ object_t* parse_object(state *state, object_t*super, int static_) {
       }
 
       name_tok = parse_token(state);
-      skip_paren(state);  // attributes sometimes have parentheses... add
-                          // whatever else you need here
+			// attributes sometimes have parentheses, but dont skip parens of a global object (end paren of function args)
+      if (*state->file == ')' && state->parens==paren) break;
+      else skip_paren(state);
     }
 
     if (name_tok.len) {
@@ -622,7 +618,7 @@ object_t* parse_object(state *state, object_t*super, int static_) {
 }
 
 char *get_cond(state *state) {
-  parse_ws(state);
+	skip_ws_comment(state);
   char *ifstart = state->file;
 
   parse_define(state);
@@ -654,13 +650,13 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 }
 
 object_t* parse_global_object(state *state) {
-  parse_skip(state);
+	skip(state);
   if (skip_sep(state)) return NULL;
 
 	char *start = state->file;
 
   if (skip_word(state, "#include")) {
-    parse_ws(state);
+		skip_ws_comment(state);
     if (*state->file != '"') {
 			char* path_start = state->file;
 			
@@ -741,13 +737,13 @@ object_t* parse_global_object(state *state) {
     return NULL;
   }
 
-  vector_clear(
-      &state->deps);  // reset deps (instead of allocating a new object and
-                      // using super, we can just use a dep buffer in state)
+	// reset deps (instead of allocating a new object and
+	// using super, we can just use a dep buffer in state)
+  vector_clear(&state->deps);
 
 	int static_ = 0, inline_ = 0;
 	static_ = skip_word(state, "static");
-	parse_ws(state);
+	skip_ws_comment(state);
 	inline_ = skip_word(state, "inline");
 
 	object_t* ty = parse_object(state, NULL, static_ && !inline_);
@@ -759,72 +755,72 @@ object_t* parse_global_object(state *state) {
   char *name = token_str(state, name_tok);
 
   char *after_name = state->file;
-  parse_ws(state);
+	skip_ws_comment(state);
 
-	object_t*obj;
+	object_t* obj;
 
-  if (*state->file == '=') {  // global
-    obj = object_new(state);
-    vector_cpy(&state->deps, &obj->deps);
+  if (parse_sep(state) || *state->file == '=') {  // global
+		obj = object_new(state);
+		vector_cpy(&state->deps, &obj->deps);
 
-    obj->declaration = heapstr("extern %s;", range(start, after_name));
+		obj->declaration = heapstr("extern %s;", range(start, after_name));
 
-    while (!parse_sep(state)) {
-      while (skip_type(state))
-        ;
-      char *str = token_str(state, parse_token_braced(state));
-      vector_pushcpy(&state->current->deps, &str);
-    }
+		while (!parse_sep(state)) {
+			if (skip_braces(state) || skip_paren(state) || skip_type(state) || skip(state)) continue;
+			char *str = token_str(state, parse_token_braced(state));
+			vector_pushcpy(&state->current->deps, &str);
+		}
 
-    skip_sep(state);
-  } else if (parse_start_paren(state)) {  // function
-    obj = object_new(state);
-    vector_cpy(&state->deps, &obj->deps);
+		skip_sep(state);
+	} else if (parse_start_paren(state)) {  // function
+		obj = object_new(state);
+		vector_cpy(&state->deps, &obj->deps);
 
-    while (!parse_end_paren(state)) {
-      parse_object(state, obj, static_);
+		while (!parse_end_paren(state)) {
+			if (skip(state) || skip_type(state)) continue;
 
-      if (parse_start_paren(state)) {
-        parse_token(state);
-        parse_end_paren(state);
+			parse_object(state, obj, static_);
 
-        if (parse_start_paren(state)) {
-          while (!parse_end_paren(state)) {
-            parse_object(state, obj, static_);
-          }
-        }
-      } else if (!parse_name(state))
-        parse_token(state);  // parse argument name
-    }
+			if (parse_start_paren(state)) {
+				parse_token(state);
+				parse_end_paren(state);
+
+				if (parse_start_paren(state)) {
+					while (!parse_end_paren(state)) {
+						parse_object(state, obj, static_);
+					}
+				}
+			} else if (!parse_name(state)) {
+				parse_token(state);  // parse argument name
+			}
+		}
 
 		if (!inline_) obj->declaration = straffix(range(start, state->file), ";");
 
-    // i changed this it may break everything
-    // i vividly remember having to fix it already im scared
 		int braces=0;
-		
+
 		if (parse_start_brace(state)) {
-      while (!parse_end_brace(state)) {
-        while (skip_type(state));
-				
+			while (!parse_end_brace(state)) {
+				while (skip(state) || skip_paren(state) || skip_type(state) || skip_braces(state));
+
 				if (strncmp(state->file, "#if", strlen("#if"))==0) { //true story
 					braces = state->braces;
 				} else if (strncmp(state->file, "#elif", strlen("#elif"))==0) {
 					//restore braces from preceding #if
 					state->braces = braces;
 				}
-				
-        if (parse_end_brace(state)) break;
-        if (parse_sep(state)) continue;  // handle preamble to another statement
 
-        token tok = parse_token_braced(state);
-        char *str = token_str(state, tok);
-        vector_pushcpy(&state->current->deps, &str);
-      }
-    }
+				if (parse_end_brace(state)) break;
+				if (skip_sep(state)) continue;  // handle preamble to another statement
+
+				token tok = parse_token_braced(state);
+				char *str = token_str(state, tok);
+				vector_pushcpy(&state->current->deps, &str);
+			}
+		}
 
 		if (inline_) obj->declaration = range(start, state->file);
-  } else {
+	} else {
     state->file = reset;
     return ty;
   }
