@@ -252,3 +252,8 @@ void charhex(unsigned char chr, char* out) {
 	if (chr < 10) out[0] = chr+'0';
 	else out[0] = (chr-10) + 'A';
 }
+
+void perrorx(char* err) {
+	perror(err);
+	exit(errno);
+}
