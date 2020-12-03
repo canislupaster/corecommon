@@ -777,9 +777,9 @@ object_t* parse_global_object(state *state) {
 		vector_cpy(&state->deps, &obj->deps);
 
 		while (!parse_end_paren(state)) {
-			if (skip(state) || skip_type(state)) continue;
+			if (skip(state)) continue;
 
-			parse_object(state, obj, static_);
+			if (!skip_type(state)) parse_object(state, obj, static_);
 
 			if (parse_start_paren(state)) {
 				parse_token(state);
@@ -801,7 +801,7 @@ object_t* parse_global_object(state *state) {
 
 		if (parse_start_brace(state)) {
 			while (!parse_end_brace(state)) {
-				while (skip(state) || skip_paren(state) || skip_type(state) || skip_braces(state));
+				if (skip(state) || skip_paren(state) || skip_type(state) || skip_braces(state)) continue;
 
 				if (strncmp(state->file, "#if", strlen("#if"))==0) { //true story
 					braces = state->braces;
