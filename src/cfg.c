@@ -89,17 +89,15 @@ char* parse_string(char** s) {
 }
 
 int parse_num(char** s, int* parsed) {
-	int succ = sscanf(*s, "%i", parsed);
-
-	skip_until(s, "\n");
-	return succ;
+	char* start = *s;
+	*parsed = (int)strtol(*s, s, 10);
+	return *s!=start;
 }
 
 int parse_float(char** s, double* parsed) {
-	int succ = sscanf(*s, "%lf\n", parsed);
-	
-	skip_until(s, "\n");
-	return succ;
+	char* start = *s;
+	*parsed = strtod(*s, s);
+	return start!=*s;
 }
 
 typedef enum {
