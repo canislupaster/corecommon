@@ -441,13 +441,15 @@ void vector_sort_inplace(vector_t* vec, size_t offset, size_t size) {
 	}
 }
 
-//mutates string and does not allocate (except for vector)
+//mutates string, doesnt copy
 vector_t vector_split_str(char* str, const char* delim) {
 	vector_t vec = vector_new(sizeof(char*));
-	
-  char* split;
-	while ((split=strsep(&str, delim)) && split) {
-    vector_pushcpy(&vec, &split);
+
+	char* tok=strtok(str, delim);
+	if (!tok) return vec;
+
+  while ((tok=strtok(NULL, delim))) {
+    vector_pushcpy(&vec, &tok);
   }
 
 	return vec;

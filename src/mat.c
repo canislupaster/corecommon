@@ -179,7 +179,7 @@ int mat_lu(mat_t* mat, tri_mat_t* l, tri_mat_t* u) {
 			rows[swap] = ry;
 
 			//swap rows in upper matrix
-			for (int x = y+1; x++; x < mat->rows) {
+			for (int x = y+1; x<mat->rows; x++) {
 				float rcoeff = *tri_mat_cell(u, x, y);
 				*tri_mat_cell(u, x, y) = *tri_mat_cell(u, x, swap);
 				*tri_mat_cell(u, x, swap) = rcoeff;

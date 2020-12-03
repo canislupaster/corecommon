@@ -1,7 +1,6 @@
 // Automatically generated header.
 
 #pragma once
-#include <err.h>
 #include <stdint.h>	 //ints for compatibility, since we are writing to files
 #include <stdio.h>
 #include <string.h>

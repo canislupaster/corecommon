@@ -6,7 +6,7 @@
 #if __arm__
 #include <arm_neon.h>
 #endif
-#if __x86_64
+#if __i386__
 #include <emmintrin.h>
 #endif
 #define CONTROL_BYTES 16

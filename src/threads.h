@@ -11,6 +11,111 @@ Main project site: https://github.com/jtsiomb/c11threads
 
 #include <time.h>
 #include <errno.h>
+
+enum {
+	mtx_plain = 0,
+	mtx_recursive = 1,
+	mtx_timed = 2,
+};
+
+enum {
+	thrd_success,
+	thrd_timedout,
+	thrd_busy,
+	thrd_error,
+	thrd_nomem
+};
+
+typedef int (*thrd_start_t)(void*);
+typedef void (*tss_dtor_t)(void*);
+
+#ifdef _WIN32
+#define _WINSOCKAPI_
+#include <windows.h>
+#include <stdio.h>
+
+typedef CRITICAL_SECTION mtx_t;
+
+static inline int mtx_init(mtx_t* mtx, int type) {
+	if (type != mtx_plain) fprintf(stderr, "too lazy to implement non-plain mutexes on windows");
+	return InitializeCriticalSectionAndSpinCount(mtx, 0)!=0 ? thrd_success : thrd_error;
+}
+
+static inline int mtx_lock(mtx_t* mtx) {
+	EnterCriticalSection(mtx);
+	return thrd_success;
+}
+
+static inline int mtx_unlock(mtx_t* mtx) {
+	LeaveCriticalSection(mtx);
+	return thrd_success;
+}
+
+static inline void mtx_destroy(mtx_t* mtx) {
+  DeleteCriticalSection(mtx);
+}
+
+typedef struct {
+	thrd_start_t fn;
+	void* arg;
+	HANDLE thrd;
+} _thrd_desc;
+
+typedef _thrd_desc* thrd_t;
+
+static inline DWORD WINAPI _thrd_run(void* ptr) {
+	_thrd_desc* desc = ptr;
+	int ret = desc->fn(desc->arg);
+	return *((DWORD*)&ret);
+}
+
+static inline int thrd_create(thrd_t* thr, thrd_start_t func, void* arg) {
+	*thr = malloc(sizeof(_thrd_desc));
+	(*thr)->fn = func; (*thr)->arg = arg;
+	(*thr)->thrd = CreateThread(NULL, 0, _thrd_run, *thr, 0, NULL);
+	return (*thr)->thrd != NULL ? thrd_success : thrd_error;
+}
+
+static inline void thrd_exit(int res) {
+	ExitThread(res);
+}
+
+static inline int thrd_join(thrd_t thr, int* res) {
+	if (WaitForSingleObject(thr->thrd, INFINITE) == WAIT_OBJECT_0) {
+		DWORD ret;
+		GetExitCodeThread(thr->thrd, &ret);
+		*res = *((int*)&ret);
+		return thrd_success;
+	} else {
+		return thrd_error;
+	}
+}
+
+static inline int thrd_detach(thrd_t thr) {
+	return CloseHandle(thr->thrd)!=0 ? thrd_success : thrd_error;
+}
+
+typedef CONDITION_VARIABLE cnd_t;
+
+static inline int cnd_init(cnd_t* cnd) {
+  InitializeConditionVariable(cnd);
+  return thrd_success;
+}
+
+static inline int cnd_wait(cnd_t* cnd, mtx_t* mtx) {
+  return SleepConditionVariableCS(cnd, mtx, INFINITE)!=0 ? thrd_success : thrd_error;
+}
+
+static inline int cnd_broadcast(cnd_t* cnd) {
+	WakeAllConditionVariable(cnd);
+	return thrd_success;
+}
+
+static inline void cnd_destroy(cnd_t* cnd) {
+	//empty, windows doesnt delete these?
+}
+
+#else
 #include <pthread.h>
 #include <sched.h>	/* for sched_yield */
 #include <sys/time.h>
@@ -33,24 +138,6 @@ typedef pthread_mutex_t mtx_t;
 typedef pthread_cond_t cnd_t;
 typedef pthread_key_t tss_t;
 typedef pthread_once_t once_flag;
-
-typedef int (*thrd_start_t)(void*);
-typedef void (*tss_dtor_t)(void*);
-
-enum {
-	mtx_plain		= 0,
-	mtx_recursive	= 1,
-	mtx_timed		= 2,
-};
-
-enum {
-	thrd_success,
-	thrd_timedout,
-	thrd_busy,
-	thrd_error,
-	thrd_nomem
-};
-
 
 /* ---- thread management ---- */
 
@@ -254,4 +341,5 @@ static inline void call_once(once_flag *flag, void (*func)(void))
 	pthread_once(flag, func);
 }
 
+#endif //non-windows
 #endif	/* C11THREADS_H_ */

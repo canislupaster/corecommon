@@ -1,6 +1,5 @@
 //i just realized this is terrible ill probably rewrite it when i get bored enough
 
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -41,7 +40,7 @@ typedef struct file {
   vector_t deps;  // file-wide deps from contents of functions/globals
 
   vector_t sorted_objects;
-  vector_t includes;      
+  vector_t includes;
 
   int pub;  // has any published objects
 } file;
@@ -405,47 +404,6 @@ char *dirname(char *filename) {
   return new_path;
 }
 
-// hello sorry but this is stolen because i am relaly tired but its stolenfrom
-// jonathan leffer on SO what a nice dude appparentlly this is 31 years old and
-// it  probably some kind of shit but im not reading it
-
-void clnpath(char *path) {
-  char *src;
-  char *dst;
-  char c;
-  int slash = 0;
-
-  /* Convert multiple adjacent slashes to single slash */
-  src = dst = path;
-  while ((c = *dst++ = *src++) != '\0') {
-    if (c == '/') {
-      slash = 1;
-      while (*src == '/') src++;
-    }
-  }
-
-  if (slash == 0) return;
-
-  /* Remove "./" from "./xxx" but leave "./" alone. */
-  /* Remove "/." from "xxx/." but reduce "/." to "/". */
-  /* Reduce "xxx/./yyy" to "xxx/yyy" */
-  src = dst = (*path == '/') ? path + 1 : path;
-  while (src[0] == '.' && src[1] == '/' && src[2] != '\0') src += 2;
-  while ((c = *dst++ = *src++) != '\0') {
-    if (c == '/' && src[0] == '.' && (src[1] == '\0' || src[1] == '/')) {
-      src++;
-      dst--;
-    }
-  }
-  if (path[0] == '/' && path[1] == '.' &&
-      (path[2] == '\0' || (path[2] == '/' && path[3] == '\0')))
-    path[1] = '\0';
-
-  /* Remove trailing slash, if any.  There is at most one! */
-  /* dst is pointing one beyond terminating null */
-  if ((dst -= 2) > path && *dst == '/') *dst++ = '\0';
-}
-
 token parse_string(state *state) {
 	skip_ws_comment(state);
 
@@ -469,7 +427,7 @@ token parse_string(state *state) {
     state->file++;
     return tok;
   } else {
-    return (token){.start=NULL, .len=0};;
+    return (token){.start=NULL, .len=0};
   }
 }
 
@@ -500,40 +458,7 @@ object_t* parse_object(state *state, object_t*super, int static_) {
   if (!first.len) return NULL;
   char *start = first.start;
 
-  if (token_eq(first, "#define") && !super) {
-    obj = object_new(state);
-    name = token_str(state, parse_token(state));
-
-    // holy fuck
-    while (*state->file && *state->file != '\n') {
-      if (*state->file == '\\') {
-				state->file++;
-				if (*state->file == '\n') state->file++;
-				continue;
-			}
-
-      if (skip_nows(state) || skip_sep(state) || skip_paren(state) ||
-          skip_braces(state))
-        continue;
-
-      // avoid newlines
-      if (*state->file == ' ' || *state->file == '\t') {
-        state->file++;
-        continue;
-      }
-
-      token tok = parse_token_noskip(state);
-      char *str = token_str(state, tok);
-
-      vector_pushcpy(&state->current->deps, &str);
-      vector_pushcpy(&obj->deps, &str);
-    }
-
-    obj->declaration = range(start, state->file);  // no semicolon for defines
-  } else if (!super && *start == '#') {            // all other directives
-    parse_define(state);
-    return NULL;
-  } else if (token_eq(first, "typedef")) {
+  if (token_eq(first, "typedef")) {
     obj = object_new(state);
     parse_object(state, obj, static_);  // parse thing inside
 
@@ -546,14 +471,11 @@ object_t* parse_object(state *state, object_t*super, int static_) {
     skip_sep(state);
   } else if (token_eq(first, "struct") || token_eq(first, "union") || token_eq(first, "enum")) {
     char *kind_prefix;
-    if (token_eq(first, "struct"))
-      kind_prefix = "struct ";
-    else if (token_eq(first, "union"))
-      kind_prefix = "union ";
-		else if (token_eq(first, "enum"))
-			kind_prefix = "enum ";
-    else
-      return NULL;
+
+    if (token_eq(first, "struct")) kind_prefix = "struct ";
+    else if (token_eq(first, "union")) kind_prefix = "union ";
+		else if (token_eq(first, "enum")) kind_prefix = "enum ";
+		else return NULL;
 
     token name_tok = {.start=NULL, .len=0};
     int paren = state->parens;
@@ -631,11 +553,11 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 	while (vector_next(&iter)) {
 		include* inc = *(include**)iter.x;
 		if (ifs->length == inc->ifs.length && streq(str, inc->path)) {
-			vector_iterator iter = vector_iterate(ifs);
+			vector_iterator iter2 = vector_iterate(ifs);
 			int br=0;
-			while (vector_next(&iter)) {
-				if_t* other = vector_get(&inc->ifs, iter.i-1);
-				if (!streq(((if_t*)iter.x)->cond, other->cond)) {
+			while (vector_next(&iter2)) {
+				if_t* other = vector_get(&inc->ifs, iter2.i-1);
+				if (!streq(((if_t*)iter2.x)->cond, other->cond)) {
 					br=1;
 					break;
 				}
@@ -655,96 +577,128 @@ object_t* parse_global_object(state *state) {
 
 	char *start = state->file;
 
-  if (skip_word(state, "#include")) {
+	if (*state->file=='#') {
+		state->file++;
 		skip_ws_comment(state);
-    if (*state->file != '"') {
-			char* path_start = state->file;
-			
-      parse_define(state);
-      char *str = range(start, state->file);
-      char* path = range(path_start, state->file);
+		if (skip_word(state, "include")) {
+			skip_ws_comment(state);
+			if (*state->file != '"') {
+				char* path_start = state->file;
 
-      if (!get_inc(state->current, path, &state->if_stack)) {
-				include* inc = heapcpy(sizeof(include), &(include){.raw=str, .path=path, .pub=1});
+				parse_define(state);
+				char* str = range(start, state->file);
+				char* path = range(path_start, state->file);
+
+				if (!get_inc(state->current, path, &state->if_stack)) {
+					include* inc = heapcpy(sizeof(include), &(include){.raw=str, .path=path, .pub=1});
+					vector_cpy(&state->if_stack, &inc->ifs);
+
+					vector_pushcpy(&state->current->includes, &inc);
+				}
+			} else {
+				char* path =
+						strpre(token_str(state, parse_string(state)), dirname(state->path));
+
+				path[strlen(path) - 1] = 'c';  //.h -> .c for finds and gen
+
+				char* str = range(start, state->file);
+
+				char* rpath = getpath(path, state->path);
+
+				include* inc = heapcpy(sizeof(include), &(include){.path=rpath ? rpath : path, .raw=str, .pub=rpath == NULL});
 				vector_cpy(&state->if_stack, &inc->ifs);
 
-				vector_pushcpy(&state->current->includes, &inc);
+				if (!get_inc(state->current, inc->path, &state->if_stack))
+					vector_pushcpy(&state->current->includes, &inc);
+			}
+		} else if (skip_word(state, "if")) {
+			vector_pushcpy(&state->if_stack,
+										 &(if_t){.kind = if_none, .cond = get_cond(state)});
+		} else if (skip_word(state, "ifdef")) {
+			vector_pushcpy(&state->if_stack,
+										 &(if_t){.kind = if_def, .cond = get_cond(state)});
+		} else if (skip_word(state, "ifndef")) {
+			vector_pushcpy(&state->if_stack,
+										 &(if_t){.kind = if_ndef, .cond = get_cond(state)});
+		} else if (skip_word(state, "elif")) {
+			if_t* cond = vector_get(&state->if_stack, state->if_stack.length - 1);
+			if_t new_cond = {.kind=if_none};
+			new_cond.cond = heapstr("(%s) && !(%s)", get_cond(state), cond->cond);
+
+			vector_pop(&state->if_stack);                 // pop old if
+			vector_pushcpy(&state->if_stack, &new_cond);  // pop new else
+		} else if (skip_word(state, "else")) {
+			if_t* cond = vector_get(&state->if_stack, state->if_stack.length - 1);
+			if_t new_cond;
+			switch (cond->kind) {
+				case if_none: {
+					new_cond.kind = if_none;
+					new_cond.cond = heapstr("!(%s)", cond->cond);
+
+					break;
+				}
+				case if_def: {
+					new_cond.kind = if_ndef;
+					new_cond.cond = cond->cond;
+					break;
+				}
+				case if_ndef: {
+					new_cond.kind = if_def;
+					new_cond.cond = cond->cond;
+					break;
+				}
 			}
 
-      return NULL;
-    }
+			vector_pop(&state->if_stack);
+			vector_pushcpy(&state->if_stack, &new_cond);
+		} else if (skip_word(state, "endif")) {
+			vector_pop(&state->if_stack);
+		} else if (skip_word(state, "define")) {
+			object_t* obj = object_new(state);
+			char* name = token_str(state, parse_token(state));
 
-    char *path =
-        strpre(token_str(state, parse_string(state)), dirname(state->path));
+			// holy fuck
+			while (*state->file && *state->file != '\n') {
+				if (*state->file == '\\') {
+					state->file++;
+					if (*state->file == '\r') state->file++;
+					if (*state->file == '\n') state->file++;
+					continue;
+				}
 
-    path[strlen(path) - 1] = 'c';  //.h -> .c for finds and gen
+				if (skip_nows(state) || skip_sep(state) || skip_paren(state) ||
+						skip_braces(state))
+					continue;
 
-    char *str = range(start, state->file);
+				// avoid newlines
+				if (*state->file == ' ' || *state->file == '\t' || *state->file == '\r') {
+					state->file++;
+					continue;
+				}
 
-    char* rpath = realpath(path, NULL);
+				token tok = parse_token_noskip(state);
+				char *str = token_str(state, tok);
 
-		include* inc = heapcpy(sizeof(include), &(include){.path=rpath ? rpath : path, .raw=str, .pub=rpath==NULL});
-		vector_cpy(&state->if_stack, &inc->ifs);
+				vector_pushcpy(&state->current->deps, &str);
+				vector_pushcpy(&obj->deps, &str);
+			}
 
-		if (!get_inc(state->current, inc->path, &state->if_stack))
-			vector_pushcpy(&state->current->includes, &inc);
-		
-    return NULL;
-  } else if (skip_word(state, "#if")) {
-    vector_pushcpy(&state->if_stack,
-                   &(if_t){.kind = if_none, .cond = get_cond(state)});
-    return NULL;
+			obj->declaration = range(start, state->file);  // no semicolon for defines
+			object_push(state, name, obj);
+		} else { // all other directives
+			parse_define(state);
+		}
 
-  } else if (skip_word(state, "#ifdef")) {
-    vector_pushcpy(&state->if_stack,
-                   &(if_t){.kind = if_def, .cond = get_cond(state)});
-    return NULL;
-
-  } else if (skip_word(state, "#ifndef")) {
-    vector_pushcpy(&state->if_stack,
-                   &(if_t){.kind = if_ndef, .cond = get_cond(state)});
-    return NULL;
-
-  } else if (skip_word(state, "#else")) {
-    if_t *cond = vector_get(&state->if_stack, state->if_stack.length - 1);
-
-    if_t new_cond;
-
-    switch (cond->kind) {
-      case if_none: {
-        new_cond.kind = if_none;
-        new_cond.cond = heapstr("!(%s)", cond);
-
-        break;
-      };
-      case if_def: {
-        new_cond.kind = if_ndef;
-        new_cond.cond = cond->cond;
-        break;
-      };
-      case if_ndef: {
-        new_cond.kind = if_def;
-        new_cond.cond = cond->cond;
-      }
-    }
-
-    vector_pop(&state->if_stack);                 // pop old if
-    vector_pushcpy(&state->if_stack, &new_cond);  // pop new else
-
-    return NULL;
-  } else if (skip_word(state, "#endif")) {
-    vector_pop(&state->if_stack);
-    return NULL;
-  }
+		return NULL;
+	}
 
 	// reset deps (instead of allocating a new object and
 	// using super, we can just use a dep buffer in state)
   vector_clear(&state->deps);
 
-	int static_ = 0, inline_ = 0;
-	static_ = skip_word(state, "static");
+	int static_ = skip_word(state, "static");
 	skip_ws_comment(state);
-	inline_ = skip_word(state, "inline");
+	int inline_ = skip_word(state, "inline");
 
 	object_t* ty = parse_object(state, NULL, static_ && !inline_);
   char *reset = state->file;  // reset to ty if not a global variable/function
@@ -881,7 +835,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 				fprintf(handle, "#ifdef %s\n", _if->cond);
 				break;
 			case if_ndef:
-				fprintf(handle, "#ifdef %s\n", _if->cond);
+				fprintf(handle, "#ifndef %s\n", _if->cond);
 				break;
 		}
 
@@ -891,7 +845,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 
 void add_file(state *state, char *path, char *filename) {
   if (!streq(ext(filename), ".c")) return;
-  path = realpath(path, NULL);
+  path = getpath(path, NULL);
 
   if (!path) {
     fprintf(stderr, "%s does not exist", filename);
@@ -981,9 +935,9 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    char *new_path = realpath(path, NULL);
+		char* new_path = getpath(path, NULL);
 
-    tinydir_file file;
+		tinydir_file file;
     tinydir_file_open(&file, new_path);
 
     recurse_add_file(&state_, file);

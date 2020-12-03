@@ -3,7 +3,6 @@
 #include <stdarg.h>
 
 #include "util.h"
-#include "str.h"
 
 // by Pavel Šimerda
 
