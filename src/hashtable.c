@@ -6,7 +6,7 @@
 #include <arm_neon.h>
 #endif
 
-#if __i386__
+#if __SSE__
 #include <emmintrin.h>
 #endif
 //not that it will be
@@ -337,7 +337,7 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 }
 
 static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
-#if __i386__
+#if __SSE__
 	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)probe_iter->current->control_bytes);
 
 	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(probe_iter->h2), control_byte_vec);
