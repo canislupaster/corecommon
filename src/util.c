@@ -298,3 +298,8 @@ void perrorx(char* err) {
 	perror(err);
 	exit(errno);
 }
+
+void errx(char* err) {
+	fprintf(stderr, "%s\n", err);
+	exit(0);
+}

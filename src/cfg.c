@@ -1,15 +1,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <Shlobj.h>
+#endif
+
 #include "util.h"
 #include "hashtable.h"
 
 //configuration file parser
 
-int ws(char** s) { return **s == '\n' || **s == '\t' || **s == ' '; }
+int ws(char* s) { return *s == '\n' || *s == '\r' || *s == '\t' || *s == ' '; }
 
 void skip_ws(char** s) {
-  while (**s && ws(s)) (*s)++;
+  while (**s && ws(*s)) (*s)++;
 }
 
 int skip_char(char** s, char x) {
@@ -17,12 +21,17 @@ int skip_char(char** s, char x) {
 }
 
 int skip_while(char** s, char* x) {
+	int ret;
 	while (strchr(x, **s)) {
-		if (!**s) return 0;
 		(*s)++;
+		ret=1;
 	}
 
-	return 1;
+	return ret;
+}
+
+int skip_any(char** s, char* x) {
+	if (strchr(x, **s)) { (*s)++; return 1; } else return 0;
 }
 
 int skip_until(char** s, char* x) {
@@ -44,11 +53,11 @@ int skip_name(char** s, char* name) {
 }
 
 char* parse_name(char** s) {
-	if (!**s || ws(s)) return 0;
+	if (!**s || ws(*s)) return 0;
 
 	char* nmstart = *s;
 
-	while (**s && !ws(s)) {
+	while (**s && !ws(*s)) {
 		(*s)++;
 	}
 
@@ -117,7 +126,18 @@ typedef struct {
 } config_val;
 
 char* cfgdir() {
+#ifdef _WIN32
+	WCHAR path[MAX_PATH];
+	if (!SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PROFILE, NULL, 0, path))) {
+		errx("couldnt get profile");
+	}
+
+	char* spath = heap(MAX_PATH);
+	wcstombs(spath, path, MAX_PATH);
+	return spath;
+#else
 	return getenv("HOME");
+#endif
 }
 
 void configure(map_t* default_cfg, char* file) {

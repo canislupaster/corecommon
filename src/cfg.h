@@ -3,10 +3,11 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
-int ws(char** s);
+int ws(char* s);
 void skip_ws(char** s);
 int skip_char(char** s, char x);
 int skip_while(char** s, char* x);
+int skip_any(char** s, char* x);
 int skip_until(char** s, char* x);
 int skip_name(char** s, char* name);
 char* parse_name(char** s);

@@ -51,3 +51,4 @@ void memcheck();
 char hexchar(char hex);
 void charhex(unsigned char chr, char* out);
 void perrorx(char* err);
+void errx(char* err);
