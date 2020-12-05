@@ -360,7 +360,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	
 	unsigned offset=0;
 	
-#if __i386__
+#if __SSE__
 	while (masked > 0) {
 		
 		unsigned x = (unsigned)masked;
@@ -382,7 +382,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 		} else {
 			probe_iter->c -= offset; //simplify next operations
 			
-#if __i386__
+#if __SSE__
 			masked >>= probe_iter->c+1;
 			offset += probe_iter->c+1;
 #elif __arm__
