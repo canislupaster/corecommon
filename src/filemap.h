@@ -6,11 +6,21 @@
 #include <string.h>
 #include <time.h>
 #include "threads.h"
+#define SENTINEL 1
+#define RESIZE_SLOTS 1
+#define MUTEXES 10
+typedef struct {
+	mtx_t lock;
+	FILE* file;
+
+	uint64_t length;
+} filemap_list_t;
 #define LOAD_FACTOR \
 	0.5	 // RESIZE_SLOTS/LOAD_FACTOR must be greater than one, lest probes break
 #define SENTINEL 1
 #define RESIZE_SLOTS 1
 #define MUTEXES 10
+
 typedef struct {
 	mtx_t lock;
 	FILE* file;
@@ -54,6 +64,7 @@ typedef struct {
 
 	unsigned field;
 } filemap_index_t;
+#include "util.h"
 typedef struct {
 	mtx_t lock;
 	FILE* file;
@@ -128,7 +139,6 @@ filemap_partial_object filemap_insert(filemap_index_t* index,
 int filemap_remove(filemap_index_t* index, char* key, uint64_t key_size);
 filemap_iterator filemap_index_iterate(filemap_index_t* index);
 filemap_partial_object filemap_add(filemap_list_t* list, filemap_object* obj);
-#include "util.h"
 typedef struct {
 	filemap_ordered_list_t* list;
 	uint64_t page;

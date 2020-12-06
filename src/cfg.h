@@ -3,6 +3,9 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <Shlobj.h>
+#endif
 int ws(char* s);
 void skip_ws(char** s);
 int skip_char(char** s, char x);

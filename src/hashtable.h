@@ -6,7 +6,7 @@
 #if __arm__
 #include <arm_neon.h>
 #endif
-#if __i386__
+#if __SSE__
 #include <emmintrin.h>
 #endif
 #define CONTROL_BYTES 16
@@ -63,7 +63,6 @@ typedef struct {
 	void* val;
 	char exists;
 } map_insert_result;
-uint64_t make_h1(uint64_t hash);
 extern uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
 typedef struct {
