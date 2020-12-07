@@ -4,8 +4,6 @@
 #include "vector.h"
 #include "hashtable.h"
 
-#include <emmintrin.h>
-
 typedef float vec3[3];
 
 const vec3 VEC3_0 = {0,0,0};

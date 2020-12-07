@@ -2,7 +2,6 @@
 
 #pragma once
 #include <string.h>
-#include <emmintrin.h>
 typedef struct {
 	float* vals;
 	unsigned rows;

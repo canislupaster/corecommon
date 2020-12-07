@@ -4,16 +4,16 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
-#if (defined(__APPLE__)) && !((defined(_WIN32)) && !(defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+#if (defined(__APPLE__)) && !((defined(_WIN32)) || (defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #  include <libkern/OSByteOrder.h>
 #endif
-#if !((defined(__APPLE__)) && !((defined(_WIN32)) && !(defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)))
+#if !((defined(__APPLE__)) || (defined(_WIN32)) || (defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
 #    include <sys/endian.h>
 #endif
-#if !(defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__))
+#if !((defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)))
 #    include "endian.h"
 #endif
 #endif
@@ -21,22 +21,22 @@
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #  define _le64toh(x) ((uint64_t)(x))
 #endif
-#if (defined(_WIN32)) && !(defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if (defined(_WIN32)) && !((defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #  define _le64toh(x) ((uint64_t)(x))
 #endif
-#if (defined(__APPLE__)) && !((defined(_WIN32)) && !(defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+#if (defined(__APPLE__)) && !((defined(_WIN32)) || (defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #  define _le64toh(x) OSSwapLittleToHostInt64(x)
 #endif
-#if !((defined(__APPLE__)) && !((defined(_WIN32)) && !(defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)))
+#if !((defined(__APPLE__)) || (defined(_WIN32)) || (defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #if defined(__BYTE_ORDER) && defined(__LITTLE_ENDIAN) && \
 	__BYTE_ORDER == __LITTLE_ENDIAN
 #    define _le64toh(x) ((uint64_t)(x))
 #endif
-#if !(defined(__BYTE_ORDER) && defined(__LITTLE_ENDIAN) && \
-	__BYTE_ORDER == __LITTLE_ENDIAN)
+#if !((defined(__BYTE_ORDER) && defined(__LITTLE_ENDIAN) && \
+	__BYTE_ORDER == __LITTLE_ENDIAN))
 #    define _le64toh(x) le64toh(x)
 #endif
 #endif

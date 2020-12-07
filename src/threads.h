@@ -14,8 +14,10 @@ Main project site: https://github.com/jtsiomb/c11threads
 
 enum {
 	mtx_plain = 0,
+#ifndef __EMSCRIPTEN__
 	mtx_recursive = 1,
 	mtx_timed = 2,
+#endif
 };
 
 enum {
@@ -206,12 +208,14 @@ static inline int mtx_init(mtx_t *mtx, int type)
 
 	pthread_mutexattr_init(&attr);
 
+#ifndef __EMSCRIPTEN__ //no mutexattrs
 	if(type & mtx_timed) {
 		pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_TIMED_NP);
 	}
 	if(type & mtx_recursive) {
 		pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
 	}
+#endif
 
 	res = pthread_mutex_init(mtx, &attr) == 0 ? thrd_success : thrd_error;
 	pthread_mutexattr_destroy(&attr);

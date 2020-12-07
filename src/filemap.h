@@ -6,21 +6,11 @@
 #include <string.h>
 #include <time.h>
 #include "threads.h"
-#define SENTINEL 1
-#define RESIZE_SLOTS 1
-#define MUTEXES 10
-typedef struct {
-	mtx_t lock;
-	FILE* file;
-
-	uint64_t length;
-} filemap_list_t;
 #define LOAD_FACTOR \
 	0.5	 // RESIZE_SLOTS/LOAD_FACTOR must be greater than one, lest probes break
 #define SENTINEL 1
 #define RESIZE_SLOTS 1
 #define MUTEXES 10
-
 typedef struct {
 	mtx_t lock;
 	FILE* file;

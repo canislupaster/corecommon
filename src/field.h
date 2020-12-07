@@ -3,7 +3,6 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
-#include <emmintrin.h>
 typedef float vec3[3];
 extern vec3 VEC3_0;
 extern vec3 VEC3_1;

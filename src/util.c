@@ -4,7 +4,11 @@
 #include <string.h>
 #include <stdarg.h>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#define UTIL_TRACE
+#endif
+
+#ifdef UTIL_TRACE
 #include <execinfo.h>
 #endif
 
@@ -15,7 +19,7 @@
 
 typedef struct {
 	void* stack[TRACE_SIZE];
-} trace;
+} trace_t;
 
 static struct {
 	map_t alloc_map;
@@ -23,11 +27,11 @@ static struct {
 }
 		ALLOCATIONS = {.initialized=0};
 
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
 void memcheck_init() {
 	if (!ALLOCATIONS.initialized) {
 		ALLOCATIONS.alloc_map = map_new();
-		map_configure_ptr_key(&ALLOCATIONS.alloc_map, sizeof(trace));
+		map_configure_ptr_key(&ALLOCATIONS.alloc_map, sizeof(trace_t));
 		map_distribute(&ALLOCATIONS.alloc_map);
 
 		ALLOCATIONS.initialized = 1;
@@ -36,25 +40,25 @@ void memcheck_init() {
 #endif
 
 void drop(void* ptr) {
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
 	if (ALLOCATIONS.initialized) map_remove(&ALLOCATIONS.alloc_map, &ptr);
 #endif
 	
 	free(ptr);
 }
 
-#ifndef _WIN32
-trace stacktrace() {
-	trace x = { 0 };
+#ifdef UTIL_TRACE
+trace_t stacktrace() {
+	trace_t x = { 0 };
 	backtrace(x.stack, TRACE_SIZE);
 
 	return x;
 }
 
-void print_trace(trace* trace) {
+void print_trace(trace_t* trace_t) {
 	printf("stack trace: \n");
 
-	char** data = backtrace_symbols(trace->stack, TRACE_SIZE);
+	char** data = backtrace_symbols(trace_t->stack, TRACE_SIZE);
 
 	for (int i = 0; i < TRACE_SIZE; i++) {
 		printf("%s\n", data[i]);
@@ -67,17 +71,19 @@ void print_trace(trace* trace) {
 void* heap(size_t size) {
 	void* res = malloc(size);
 
-#ifndef _WIN32
 	if (!res) {
 		fprintf(stderr, "out of memory!");
-		trace tr = stacktrace();
+#ifdef UTIL_TRACE
+		trace_t tr = stacktrace();
 		print_trace(&tr);
+#endif
 		abort();
 	}
 
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
+#ifdef UTIL_TRACE
 	if (ALLOCATIONS.initialized) {
-		trace tr = stacktrace();
+		trace_t tr = stacktrace();
 		map_insert_result mapres = map_insertcpy(&ALLOCATIONS.alloc_map, &res, &tr);
 	}
 #endif
@@ -149,13 +155,13 @@ void* resize(void* ptr, size_t size) {
 		fprintf(stderr, "out of memory!");
 		abort();
 	}
-	
-#ifndef _WIN32
-#if BUILD_DEBUG
+
+#ifdef BUILD_DEBUG
+#ifdef UTIL_TRACE
 		if (ALLOCATIONS.initialized && ptr != res) {
 			map_remove(&ALLOCATIONS.alloc_map, &ptr);
 
-			trace new_tr = stacktrace();
+			trace_t new_tr = stacktrace();
 			map_insertcpy(&ALLOCATIONS.alloc_map, &res, &new_tr);
 		}
 #endif
@@ -165,37 +171,20 @@ void* resize(void* ptr, size_t size) {
 }
 
 //utility fns
-char* getpath(char* path, char* parent) {
-	char* relpath;
-	if (parent) {
-		relpath = malloc(1024);
-		unsigned plen = strlen(parent);
-		memcpy(relpath, parent, plen + 1);
-
-		char* slash = relpath + plen - 1;
-		while (*slash != '/' && *slash != '\\' && slash >= relpath)
-			slash--;
-		slash++;
-
-		memcpy(slash, path, strlen(path) + 1);
-	} else {
-		relpath = path;
-	}
-
+char* getpath(char* path) {
 #if _WIN32
 	char* new_path = malloc(1024);
-	GetFullPathNameA(relpath, 1024, new_path, NULL);
+	GetFullPathNameA(path, 1024, new_path, NULL);
 #else
-	char *new_path = realpath(relpath, NULL);
+	char *new_path = realpath(path, NULL);
 #endif
 
-	if (parent) drop(relpath);
-		return new_path;
+	return new_path;
 }
 
 char* read_file(char* path) {
 	FILE *handle = fopen(path, "rb");
-  if (!handle) {		
+  if (!handle) {
     return NULL;
   }
 
@@ -248,7 +237,7 @@ char *ext(char *filename) {
 }
 
 #ifdef BUILD_DEBUG
-#ifndef _WIN32
+#ifdef UTIL_TRACE
 void memcheck() {
 	if (!ALLOCATIONS.initialized) return;
 

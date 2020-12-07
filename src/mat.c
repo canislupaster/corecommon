@@ -1,5 +1,4 @@
 #include <string.h>
-#include <emmintrin.h>
 
 #include "util.h"
 

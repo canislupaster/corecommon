@@ -13,7 +13,8 @@
 
 typedef struct {
   enum { if_none, if_def, if_ndef } kind;
-  char *cond;
+  char* cond;
+  char* acc; //accumulator stores the OR of all branches thus far for lazy elif handling
 } if_t;
 
 typedef struct {
@@ -206,28 +207,37 @@ int skip_nokeyword(state *state) {
   return 0;
 }
 
+int skip_ws_comment_once(state* state) {
+	if (skip_char(&state->file, '#')) {
+		parse_directive(state);
+		return 1;
+	} else if (ws(state->file)) {
+		do state->file++; while (ws(state->file));
+		return 1;
+	} else if (skip_word(state, "__attribute__")) {
+		char c;
+		int p = state->parens;
+		while ((c=*(state->file++))) {
+			if (c=='(') state->parens++;
+			else if (c==')') {
+				state->parens--;
+				if (state->parens==p) break;
+			}
+		}
+
+		return 1;
+	} else if (parse_comment(state)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 int skip_ws_comment(state *state) {
 	int skipped=0;
 	while (1) {
-		if (skip_char(&state->file, '#')) {
-			parse_directive(state);
-		} else if (ws(state->file)) {
-			state->file++;
-		} else if (skip_word(state, "__attribute__")) {
-			char c;
-			int p = state->parens;
-			while ((c=*(state->file++))) {
-				if (c=='(') state->parens++;
-				else if (c==')') {
-					state->parens--;
-					if (state->parens==p) break;
-				}
-			}
-		} else if (!parse_comment(state)) {
-			break;
-		}
-
-		skipped=1;
+		if (skip_ws_comment_once(state)) skipped=1;
+		else break;
 	}
 
 	return skipped;
@@ -285,7 +295,7 @@ char *dirname(char *filename) {
   for (char *fnptr = filename; *fnptr; fnptr++) {
     if (*fnptr == '/')
       slash = fnptr + 1;  // include slash
-    else if (*fnptr == '\\' && *fnptr + 1 == '\\')
+    else if (*fnptr == '\\' && *(fnptr+1) == '\\')
       slash = fnptr + 2;
   }
 
@@ -383,7 +393,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 				continue;
 			}
 
-			if (skip_ws_comment(state) || skip_nokeyword(state)) continue;
+			if (skip_ws_comment_once(state) || skip_nokeyword(state)) continue;
 			else break;
 		}
 
@@ -539,7 +549,8 @@ void parse_directive(state* state) {
 
 			char* str = range(start, state->file);
 
-			char* rpath = getpath(path, state->path);
+			char* rpath = getpath(path);
+			if (rpath) drop(path);
 
 			include* inc = heapcpy(sizeof(include), &(include){.path=rpath ? rpath : path, .raw=str, .pub=rpath == NULL});
 			vector_cpy(&state->if_stack, &inc->ifs);
@@ -548,7 +559,8 @@ void parse_directive(state* state) {
 				vector_pushcpy(&state->current->includes, &inc);
 		}
 	} else if (skip_word(state, "if")) {
-		vector_pushcpy(&state->if_stack, &(if_t){.kind = if_none, .cond = get_cond(state)});
+		char* cond = get_cond(state);
+		vector_pushcpy(&state->if_stack, &(if_t){.kind = if_none, .cond=cond, .acc=heapstr("(%s)", cond)});
 		vector_pushcpy(&state->if_braces, &state->braces);
 	} else if (skip_word(state, "ifdef")) {
 		vector_pushcpy(&state->if_stack, &(if_t){.kind = if_def, .cond = get_cond(state)});
@@ -559,7 +571,26 @@ void parse_directive(state* state) {
 	} else if (skip_word(state, "elif")) {
 		if_t* cond = vector_get(&state->if_stack, state->if_stack.length - 1);
 		if_t new_cond = {.kind=if_none};
-		new_cond.cond = heapstr("(%s) && !(%s)", get_cond(state), cond->cond);
+
+		char* cond_str = get_cond(state);
+		switch (cond->kind) {
+			case if_none: {
+				new_cond.cond = heapstr("(%s) && !(%s)", cond_str, cond->acc);
+				new_cond.acc = heapstr("(%s) || %s", cond_str, cond->acc);
+				drop(cond->acc);
+				break;
+			}
+			case if_def: {
+				new_cond.cond = heapstr("(%s) && !defined(%s)", cond_str, cond->cond);
+				new_cond.acc = heapstr("(%s) || defined(%s)", cond_str, cond->cond);
+				break;
+			}
+			case if_ndef: {
+				new_cond.cond = heapstr("(%s) && defined(%s)", cond_str, cond->cond);
+				new_cond.acc = heapstr("(%s) || !defined(%s)", cond_str, cond->cond);
+				break;
+			}
+		}
 
 		vector_pop(&state->if_stack);                 // pop old if
 		vector_pushcpy(&state->if_stack, &new_cond);  // pop new else
@@ -571,7 +602,8 @@ void parse_directive(state* state) {
 		switch (cond->kind) {
 			case if_none: {
 				new_cond.kind = if_none;
-				new_cond.cond = heapstr("!(%s)", cond->cond);
+				new_cond.cond = heapstr("!(%s)", cond->acc);
+				new_cond.acc = cond->acc; //for drop() in endif
 
 				break;
 			}
@@ -591,6 +623,9 @@ void parse_directive(state* state) {
 		vector_pushcpy(&state->if_stack, &new_cond);
 		state->braces = *(int*)vector_get(&state->if_braces, state->if_stack.length-1);
 	} else if (skip_word(state, "endif")) {
+		if_t* _if = vector_get(&state->if_stack, state->if_stack.length-1);
+		if (_if->kind == if_none) drop(_if->acc);
+
 		vector_pop(&state->if_stack);
 		vector_pop(&state->if_braces);
 	} else if (skip_word(state, "define")) {
@@ -675,7 +710,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 
 void add_file(state *state, char *path, char *filename) {
   if (!streq(ext(filename), ".c")) return;
-  path = getpath(path, NULL);
+  path = getpath(path);
 
   if (!path) {
     fprintf(stderr, "%s does not exist", filename);
@@ -765,7 +800,7 @@ int main(int argc, char **argv) {
       continue;
     }
 
-		char* new_path = getpath(path, NULL);
+		char* new_path = getpath(path);
 
 		tinydir_file file;
     tinydir_file_open(&file, new_path);

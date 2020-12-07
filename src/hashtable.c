@@ -337,7 +337,27 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 }
 
 static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
-#if __SSE__
+#if !defined(__SSE__) && !defined(__arm__)
+	*empty=1;
+	for (char i=0; i<16; i++) {
+		unsigned char c = probe_iter->current->control_bytes[i];
+		if (c!=0) {
+			if (c==probe_iter->h2) {
+				void* compare_key =
+						(char*) probe_iter->current + CONTROL_BYTES + probe_iter->map->size*i;
+
+				if (probe_iter->map->compare(probe_iter->key, compare_key)) {
+					return compare_key;
+				}
+			}
+
+			*empty=0;
+		}
+	}
+
+	return NULL;
+#else
+#ifdef __SSE__
 	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)probe_iter->current->control_bytes);
 
 	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(probe_iter->h2), control_byte_vec);
@@ -345,7 +365,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 
 	*empty = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(0), control_byte_vec))==UINT16_MAX;
 	
-#elif __arm__
+#elif defined(__arm__)
 	uint8x16_t control_byte_vec = vld1q_u8(probe_iter->current->control_bytes);
 	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(probe_iter->h2));
 	uint64_t masked[2];
@@ -360,12 +380,12 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	
 	unsigned offset=0;
 	
-#if __SSE__
+#ifdef __SSE__
 	while (masked > 0) {
 		
 		unsigned x = (unsigned)masked;
 		probe_iter->c = __builtin_ctz(x) + offset;
-#elif __arm__
+#elif defined(__arm__)
 	while (masked[0] > 0 || masked[1] > 0) {
 
 		probe_iter->c = masked[0]>0 ? __builtin_ctzll(masked[0]) : 64+__builtin_ctzll(masked[1]);
@@ -382,10 +402,10 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 		} else {
 			probe_iter->c -= offset; //simplify next operations
 			
-#if __SSE__
+#ifdef __SSE__
 			masked >>= probe_iter->c+1;
 			offset += probe_iter->c+1;
-#elif __arm__
+#elif defined(__arm__)
 			if (masked[0]>0) {
 				masked[0] >>= 8*(probe_iter->c+1);
 				if (masked[0]==0) offset=0;
@@ -399,6 +419,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	}
 	
 	return NULL;
+#endif
 }
 
 void* map_findkey_unlocked(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
