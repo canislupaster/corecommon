@@ -1,9 +1,16 @@
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#define UTIL_TRACE
+#endif
+
+#ifdef UTIL_TRACE
 #include <execinfo.h>
+#endif
 
 #include "hashtable.h"
 #include "str.h"
@@ -12,7 +19,7 @@
 
 typedef struct {
 	void* stack[TRACE_SIZE];
-} trace;
+} trace_t;
 
 static struct {
 	map_t alloc_map;
@@ -20,11 +27,11 @@ static struct {
 }
 		ALLOCATIONS = {.initialized=0};
 
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
 void memcheck_init() {
 	if (!ALLOCATIONS.initialized) {
 		ALLOCATIONS.alloc_map = map_new();
-		map_configure_ptr_key(&ALLOCATIONS.alloc_map, sizeof(trace));
+		map_configure_ptr_key(&ALLOCATIONS.alloc_map, sizeof(trace_t));
 		map_distribute(&ALLOCATIONS.alloc_map);
 
 		ALLOCATIONS.initialized = 1;
@@ -33,24 +40,25 @@ void memcheck_init() {
 #endif
 
 void drop(void* ptr) {
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
 	if (ALLOCATIONS.initialized) map_remove(&ALLOCATIONS.alloc_map, &ptr);
 #endif
 	
 	free(ptr);
 }
 
-trace stacktrace() {
-	trace x = {};
+#ifdef UTIL_TRACE
+trace_t stacktrace() {
+	trace_t x = { 0 };
 	backtrace(x.stack, TRACE_SIZE);
 
 	return x;
 }
 
-void print_trace(trace* trace) {
+void print_trace(trace_t* trace_t) {
 	printf("stack trace: \n");
 
-	char** data = backtrace_symbols(trace->stack, TRACE_SIZE);
+	char** data = backtrace_symbols(trace_t->stack, TRACE_SIZE);
 
 	for (int i = 0; i < TRACE_SIZE; i++) {
 		printf("%s\n", data[i]);
@@ -58,22 +66,27 @@ void print_trace(trace* trace) {
 
 	drop(data);
 }
+#endif
 
 void* heap(size_t size) {
 	void* res = malloc(size);
 
 	if (!res) {
 		fprintf(stderr, "out of memory!");
-		trace tr = stacktrace();
+#ifdef UTIL_TRACE
+		trace_t tr = stacktrace();
 		print_trace(&tr);
+#endif
 		abort();
 	}
 
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
+#ifdef UTIL_TRACE
 	if (ALLOCATIONS.initialized) {
-		trace tr = stacktrace();
+		trace_t tr = stacktrace();
 		map_insert_result mapres = map_insertcpy(&ALLOCATIONS.alloc_map, &res, &tr);
 	}
+#endif
 #endif
 
 	return res;
@@ -84,6 +97,8 @@ void* heapcpy(size_t size, const void* val) {
 	memcpy(res, val, size);
 	return res;
 }
+
+//strings
 
 char* heapcpystr(const char* str) {
 	return heapcpy(strlen(str) + 1, str);
@@ -109,6 +124,30 @@ char* heapstr(const char* fmt, ...) {
 	return strp;
 }
 
+char* stradd(char* str1, char* str2) {
+	char* s = heap(strlen(str1) + strlen(str2) + 1);
+	memcpy(s, str1, strlen(str1));
+	memcpy(s+strlen(str1), str2, strlen(str2)+1);
+	return s;
+}
+
+char* strpre(char* str, char* prefix) {
+	char* s = stradd(prefix, str);
+	drop(str);
+	return s;
+}
+
+char* straffix(char* str, char* affix) {
+	char* s = stradd(str, affix);
+	drop(str);
+	return s;
+}
+
+//im tired of strcmp
+int streq(char* str1, char* str2) {
+	return strcmp(str1, str2)==0;
+}
+
 void* resize(void* ptr, size_t size) {
 	void* res = realloc(ptr, size);
 
@@ -116,28 +155,41 @@ void* resize(void* ptr, size_t size) {
 		fprintf(stderr, "out of memory!");
 		abort();
 	}
-	
-	#if BUILD_DEBUG
+
+#ifdef BUILD_DEBUG
+#ifdef UTIL_TRACE
 		if (ALLOCATIONS.initialized && ptr != res) {
 			map_remove(&ALLOCATIONS.alloc_map, &ptr);
 
-			trace new_tr = stacktrace();
+			trace_t new_tr = stacktrace();
 			map_insertcpy(&ALLOCATIONS.alloc_map, &res, &new_tr);
 		}
-	#endif
+#endif
+#endif
 
 	return res;
 }
 
-//utility fn
+//utility fns
+char* getpath(char* path) {
+#if _WIN32
+	char* new_path = malloc(1024);
+	GetFullPathNameA(path, 1024, new_path, NULL);
+#else
+	char *new_path = realpath(path, NULL);
+#endif
+
+	return new_path;
+}
+
 char* read_file(char* path) {
 	FILE *handle = fopen(path, "rb");
-  if (!handle) {		
+  if (!handle) {
     return NULL;
   }
 
   fseek(handle, 0, SEEK_END);
-  unsigned long len = ftell(handle);
+  unsigned len = ftell(handle);
 
   rewind(handle);
 
@@ -151,6 +203,28 @@ char* read_file(char* path) {
 	return str;
 }
 
+#ifndef _WIN32 //already defined
+int max(int a, int b) {
+	return a>b?a:b;
+}
+
+int min(int a, int b) {
+	return a>b?b:a;
+}
+#endif
+
+char* path_trunc(char* path, unsigned up) {
+	char* end = path + strlen(path);
+	if (end == path) return path;
+
+	while (up>0) {
+		do end--; while (end>path && *end != '/');
+		up--;
+	}
+
+	return heapcpysubstr(path, end-path);
+}
+
 //utility fn
 char *ext(char *filename) {
   char *dot = "";
@@ -162,7 +236,8 @@ char *ext(char *filename) {
   return dot;
 }
 
-#if BUILD_DEBUG
+#ifdef BUILD_DEBUG
+#ifdef UTIL_TRACE
 void memcheck() {
 	if (!ALLOCATIONS.initialized) return;
 
@@ -180,6 +255,7 @@ void memcheck() {
 	map_free(&ALLOCATIONS.alloc_map);
 	ALLOCATIONS.initialized = 0;
 }
+#endif
 #endif
 
 //kinda copied from https://nachtimwald.com/2017/09/24/hex-encode-and-decode-in-c/
@@ -205,4 +281,14 @@ void charhex(unsigned char chr, char* out) {
 
 	if (chr < 10) out[0] = chr+'0';
 	else out[0] = (chr-10) + 'A';
+}
+
+void perrorx(char* err) {
+	perror(err);
+	exit(errno);
+}
+
+void errx(char* err) {
+	fprintf(stderr, "%s\n", err);
+	exit(0);
 }

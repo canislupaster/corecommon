@@ -1,27 +1,50 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <Shlobj.h>
+#endif
+
 #include "util.h"
 #include "hashtable.h"
 
 //configuration file parser
 
-static int ws(char** s) { return **s == '\n' || **s == '\t' || **s == ' '; }
+int ws(char* s) { return *s == '\n' || *s == '\r' || *s == '\t' || *s == ' '; }
 
-static void skip_ws(char** s) {
-  while (**s && ws(s)) (*s)++;
+void skip_ws(char** s) {
+  while (**s && ws(*s)) (*s)++;
 }
 
-static int skip_char(char** s, char x) {
+int skip_char(char** s, char x) {
   if (**s == x) { (*s)++; return 1; } else return 0;
 }
 
-static void skip_until(char** s, char* x) {
-	while (**s && !strchr(x, **s)) (*s)++;
+int skip_while(char** s, char* x) {
+	int ret;
+	while (strchr(x, **s)) {
+		(*s)++;
+		ret=1;
+	}
+
+	return ret;
 }
 
-static int skip_name(char** s, char* name) {
-  if (strncmp(*s, name, strlen(name))) {
+int skip_any(char** s, char* x) {
+	if (strchr(x, **s)) { (*s)++; return 1; } else return 0;
+}
+
+int skip_until(char** s, char* x) {
+	while (!strchr(x, **s)) {
+		if (!**s) return 0;
+		(*s)++;
+	}
+
+	return 1;
+}
+
+int skip_name(char** s, char* name) {
+  if (strncmp(*s, name, strlen(name))==0) {
     *s += strlen(name);
     return 1;
   } else {
@@ -29,12 +52,12 @@ static int skip_name(char** s, char* name) {
   }
 }
 
-static char* parse_name(char** s) {
-	if (!**s || ws(s)) return 0;
+char* parse_name(char** s) {
+	if (!**s || ws(*s)) return 0;
 
 	char* nmstart = *s;
 
-	while (**s && !ws(s)) {
+	while (**s && !ws(*s)) {
 		(*s)++;
 	}
 
@@ -48,7 +71,7 @@ static char* parse_name(char** s) {
 	return name;
 }
 
-static char* parse_string(char** s) {
+char* parse_string(char** s) {
   if (**s == '\"') {
     (*s)++;
     char* strstart = *s;
@@ -74,18 +97,16 @@ static char* parse_string(char** s) {
   }
 }
 
-static int parse_num(char** s, int* parsed) {
-	int succ = sscanf(*s, "%i", parsed);
-
-	skip_until(s, "\n");
-	return succ;
+int parse_num(char** s, int* parsed) {
+	char* start = *s;
+	*parsed = (int)strtol(*s, s, 10);
+	return *s!=start;
 }
 
-static int parse_float(char** s, double* parsed) {
-	int succ = sscanf(*s, "%lf\n", parsed);
-	
-	skip_until(s, "\n");
-	return succ;
+int parse_float(char** s, double* parsed) {
+	char* start = *s;
+	*parsed = strtod(*s, s);
+	return start!=*s;
 }
 
 typedef enum {
@@ -105,7 +126,18 @@ typedef struct {
 } config_val;
 
 char* cfgdir() {
+#ifdef _WIN32
+	WCHAR path[MAX_PATH];
+	if (!SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PROFILE, NULL, 0, path))) {
+		errx("couldnt get profile");
+	}
+
+	char* spath = heap(MAX_PATH);
+	wcstombs(spath, path, MAX_PATH);
+	return spath;
+#else
 	return getenv("HOME");
+#endif
 }
 
 void configure(map_t* default_cfg, char* file) {
@@ -143,7 +175,7 @@ void configure(map_t* default_cfg, char* file) {
 			case cfg_float: succ=parse_float(&cfgc, &val->data.float_); break;
 			case cfg_str: {
 				val->data.str = parse_string(&cfgc);
-				succ = val->data.str ? 1 : 0;
+				succ = val->data.str!=NULL;
 			}
 		}
 
@@ -151,7 +183,7 @@ void configure(map_t* default_cfg, char* file) {
 	}
 }
 
-//saves and frees config
+//saves cfg
 void save_configure(map_t* cfg, char* file) {
 	char* path = heapstr("%s/%s", cfgdir(), file);
 	FILE* f = fopen(path, "w"); drop(path);
@@ -169,8 +201,7 @@ void save_configure(map_t* cfg, char* file) {
 			case cfg_num: fprintf(f, "%i", val->data.num); break;
 			case cfg_float: fprintf(f, "%lf", val->data.float_); break;
 			case cfg_str: {
-				fprintf(f, "%s", val->data.str);
-				drop(val->data.str);
+				fprintf(f, "\"%s\"", val->data.str);
 				break;
 			}
 		}
@@ -179,6 +210,24 @@ void save_configure(map_t* cfg, char* file) {
 	}
 
 	fclose(f);
+}
+
+void cfg_free(map_t* cfg) {
+	map_iterator iter = map_iterate(cfg);
+	while (map_next(&iter)) {
+		config_val* val = iter.x;
+		if (val->is_default) continue;
+
+		switch (val->ty) {
+			case cfg_str: {
+				drop(val->data.str);
+				break;
+			}
+			default:;
+		}
+	}
+
+	map_free(cfg);
 }
 
 void cfg_add(map_t* cfg, const char* name, cfg_ty ty, cfg_data data) {

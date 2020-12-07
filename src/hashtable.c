@@ -6,7 +6,7 @@
 #include <arm_neon.h>
 #endif
 
-#if __x86_64
+#if __SSE__
 #include <emmintrin.h>
 #endif
 //not that it will be
@@ -27,8 +27,8 @@ typedef struct {
 typedef struct {
 	rwlock_t* lock;
 
-	unsigned long key_size;
-	unsigned long size;
+	unsigned key_size;
+	unsigned size;
 
 	/// hash and compare
 	uint64_t (* hash)(void*);
@@ -39,8 +39,8 @@ typedef struct {
   //free data in map_remove, before references are removed
 	void (*free)(void*);
 
-	unsigned long length;
-	unsigned long num_buckets;
+	unsigned length;
+	unsigned num_buckets;
 
 	char* buckets;
 } map_t;
@@ -49,7 +49,7 @@ typedef struct {
 	map_t* map;
 
 	char c;
-	unsigned long bucket;
+	unsigned bucket;
 
 	void* key;
 	void* x;
@@ -64,7 +64,7 @@ typedef struct {
 	uint64_t h1;
 	uint8_t h2;
 
-	unsigned long probes;
+	unsigned probes;
 
 	bucket* current;
 	/// temporary storage for c when matching
@@ -100,15 +100,23 @@ uint64_t hash_string(char** x) {
 
 typedef struct {
   char* bin;
-  unsigned long size;
+  unsigned size;
 } map_sized_t;
 
 uint64_t hash_sized(map_sized_t* x) {
 	return siphash24_keyed((uint8_t*)x->bin, x->size);
 }
 
+uint64_t hash_uint(unsigned* x) {
+	return siphash24_keyed((uint8_t*) x, sizeof(unsigned));
+}
+
 uint64_t hash_uint64(uint64_t* x) {
 	return siphash24_keyed((uint8_t*) x, 8);
+}
+
+uint64_t hash_uint96(uint32_t* x) {
+	return siphash24_keyed((uint8_t*) x, 4*3);
 }
 
 uint64_t hash_ptr(void** x) {
@@ -116,7 +124,7 @@ uint64_t hash_ptr(void** x) {
 }
 
 int compare_string(char** left, char** right) {
-	return strcmp(*left, *right) == 0;
+	return streq(*left, *right);
 }
 
 int compare_sized(map_sized_t* left, map_sized_t* right) {
@@ -124,8 +132,16 @@ int compare_sized(map_sized_t* left, map_sized_t* right) {
 		&& (left->bin == right->bin || memcmp(left->bin, right->bin, left->size) == 0);
 }
 
+int compare_uint(unsigned* left, unsigned* right) {
+	return *left == *right;
+}
+
 int compare_uint64(uint64_t* left, uint64_t* right) {
 	return *left == *right;
+}
+
+int compare_uint96(uint32_t* left, uint32_t* right) {
+	return left[0] == right[0] && left[1] == right[1] && left[2] == right[2];
 }
 
 int compare_ptr(void** left, void** right) {
@@ -142,7 +158,7 @@ void free_sized(void* x) {
   drop(sized->bin);
 }
 
-unsigned long map_bucket_size(map_t* map) {
+unsigned map_bucket_size(map_t* map) {
 	return CONTROL_BYTES + CONTROL_BYTES * map->size;
 }
 
@@ -157,18 +173,18 @@ void map_distribute(map_t* map) {
 	*map->lock = rwlock_new();
 }
 
-void map_configure(map_t* map, unsigned long size) {
+void map_configure(map_t* map, unsigned size) {
 	map->size = size + map->key_size;
 
-	unsigned long x = DEFAULT_BUCKETS * map_bucket_size(map);
+	unsigned x = DEFAULT_BUCKETS * map_bucket_size(map);
 	map->buckets = heap(x);
 
-	for (unsigned long i = 0; i < map->num_buckets; i++) {
+	for (unsigned i = 0; i < map->num_buckets; i++) {
 		memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
 	}
 }
 
-void map_configure_string_key(map_t* map, unsigned long size) {
+void map_configure_string_key(map_t* map, unsigned size) {
 	map->key_size = sizeof(char*); //string reference is default key
 
 	map->hash = (uint64_t(*)(void*)) hash_string;
@@ -177,7 +193,7 @@ void map_configure_string_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_sized_key(map_t* map, unsigned long size) {
+void map_configure_sized_key(map_t* map, unsigned size) {
 	map->key_size = sizeof(map_sized_t);
 
 	map->hash = (uint64_t(*)(void*)) hash_sized;
@@ -186,7 +202,16 @@ void map_configure_sized_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_uint64_key(map_t* map, unsigned long size) {
+void map_configure_uint_key(map_t* map, unsigned size) {
+	map->key_size = sizeof(unsigned);
+
+	map->hash = (uint64_t(*)(void*)) hash_uint;
+	map->compare = (int (*)(void*, void*)) compare_uint;
+
+	map_configure(map, size);
+}
+
+void map_configure_uint64_key(map_t* map, unsigned size) {
 	map->key_size = 8;
 
 	map->hash = (uint64_t(*)(void*)) hash_uint64;
@@ -195,8 +220,17 @@ void map_configure_uint64_key(map_t* map, unsigned long size) {
 	map_configure(map, size);
 }
 
-void map_configure_ptr_key(map_t* map, unsigned long size) {
-	map->key_size = sizeof(unsigned long);
+void map_configure_uint96_key(map_t* map, unsigned size) {
+	map->key_size = 4*3;
+
+	map->hash = (uint64_t(*)(void*)) hash_uint96;
+	map->compare = (int (*)(void*, void*)) compare_uint96;
+
+	map_configure(map, size);
+}
+
+void map_configure_ptr_key(map_t* map, unsigned size) {
+	map->key_size = sizeof(unsigned);
 
 	map->hash = (uint64_t(*)(void*)) hash_ptr;
 	map->compare = (int (*)(void*, void*)) compare_ptr;
@@ -303,7 +337,27 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 }
 
 static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
-#if __x86_64__
+#if !defined(__SSE__) && !defined(__arm__)
+	*empty=1;
+	for (char i=0; i<16; i++) {
+		unsigned char c = probe_iter->current->control_bytes[i];
+		if (c!=0) {
+			if (c==probe_iter->h2) {
+				void* compare_key =
+						(char*) probe_iter->current + CONTROL_BYTES + probe_iter->map->size*i;
+
+				if (probe_iter->map->compare(probe_iter->key, compare_key)) {
+					return compare_key;
+				}
+			}
+
+			*empty=0;
+		}
+	}
+
+	return NULL;
+#else
+#ifdef __SSE__
 	__m128i control_byte_vec = _mm_loadu_si128((const __m128i*)probe_iter->current->control_bytes);
 
 	__m128i result = _mm_cmpeq_epi8(_mm_set1_epi8(probe_iter->h2), control_byte_vec);
@@ -311,7 +365,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 
 	*empty = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_set1_epi8(0), control_byte_vec))==UINT16_MAX;
 	
-#elif __arm__
+#elif defined(__arm__)
 	uint8x16_t control_byte_vec = vld1q_u8(probe_iter->current->control_bytes);
 	uint8x16_t result = vceqq_u8(control_byte_vec, vdupq_n_u8(probe_iter->h2));
 	uint64_t masked[2];
@@ -326,12 +380,12 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	
 	unsigned offset=0;
 	
-#if __x86_64__
+#ifdef __SSE__
 	while (masked > 0) {
 		
 		unsigned x = (unsigned)masked;
 		probe_iter->c = __builtin_ctz(x) + offset;
-#elif __arm__
+#elif defined(__arm__)
 	while (masked[0] > 0 || masked[1] > 0) {
 
 		probe_iter->c = masked[0]>0 ? __builtin_ctzll(masked[0]) : 64+__builtin_ctzll(masked[1]);
@@ -348,10 +402,10 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 		} else {
 			probe_iter->c -= offset; //simplify next operations
 			
-#if __x86_64__
+#ifdef __SSE__
 			masked >>= probe_iter->c+1;
 			offset += probe_iter->c+1;
-#elif __arm__
+#elif defined(__arm__)
 			if (masked[0]>0) {
 				masked[0] >>= 8*(probe_iter->c+1);
 				if (masked[0]==0) offset=0;
@@ -365,6 +419,7 @@ static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 	}
 	
 	return NULL;
+#endif
 }
 
 void* map_findkey_unlocked(map_t* map, void* key) { //TODO: if length == stuff seen stop searching
@@ -472,7 +527,7 @@ static void* map_probe_remove(map_probe_iterator* probe) {
 void map_resize(map_t* map) {
 	while (map_load_factor(map)) {
 		//double
-		unsigned long old_num_buckets = map->num_buckets;
+		unsigned old_num_buckets = map->num_buckets;
 		map->num_buckets *= 2;
 
 		//use realloc in case debugging is enabled on resize
@@ -482,7 +537,7 @@ void map_resize(map_t* map) {
 			abort();
 		}
 
-		for (unsigned long i = old_num_buckets; i < map->num_buckets; i++) {
+		for (unsigned i = old_num_buckets; i < map->num_buckets; i++) {
 			memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
 		}
 

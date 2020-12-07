@@ -44,7 +44,7 @@
 #  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
 #    include <sys/endian.h>
 #  else
-#    include <endian.h>
+#    include "endian.h"
 #  endif
 #  if defined(__BYTE_ORDER) && defined(__LITTLE_ENDIAN) && \
 	__BYTE_ORDER == __LITTLE_ENDIAN
@@ -75,7 +75,7 @@ static struct {
 }
 	SIPHASH_KEY = {.initialized=0, .key={0, 0, 0, 0}};
 
-uint64_t siphash24(const void* src, unsigned long src_sz, const char key[16]) {
+uint64_t siphash24(const void* src, unsigned src_sz, const char key[16]) {
 	const uint64_t* _key = (uint64_t*) key;
 	uint64_t k0 = _le64toh(_key[0]);
 	uint64_t k1 = _le64toh(_key[1]);
@@ -120,7 +120,7 @@ uint64_t siphash24(const void* src, unsigned long src_sz, const char key[16]) {
 	return (v0 ^ v1) ^ (v2 ^ v3);
 }
 
-uint64_t siphash24_keyed(const void* src, unsigned long src_sz) {
+uint64_t siphash24_keyed(const void* src, unsigned src_sz) {
 	//set siphash key
 	if (!SIPHASH_KEY.initialized) {
 		SIPHASH_KEY.initialized = 1;

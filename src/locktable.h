@@ -8,7 +8,7 @@
 typedef struct {
   vector_t mtxs;
 } locktable_t;
-locktable_t locktable_new(unsigned long size);
+locktable_t locktable_new(unsigned size);
 void locktable_lock(locktable_t* locktable, uint64_t id);
 void locktable_unlock(locktable_t* locktable, uint64_t id);
 void locktable_lock_key(locktable_t* locktable, char* key, size_t key_size);
