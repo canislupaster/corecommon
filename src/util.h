@@ -53,5 +53,8 @@ void memcheck();
 #endif
 char hexchar(char hex);
 void charhex(unsigned char chr, char* out);
+unsigned char* bit_reinterpret(unsigned char* src, unsigned inlen, unsigned* outlen, unsigned char inl, unsigned char outl);
+char* base64_encode(char* src, unsigned len);
+char* base64_decode(char* src, unsigned* len);
 void perrorx(char* err);
 void errx(char* err);

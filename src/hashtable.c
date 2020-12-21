@@ -76,8 +76,6 @@ typedef struct {
 	char exists;
 } map_insert_result;
 
-const char DEFAULT_BUCKET[CONTROL_BYTES] = {0};
-
 static uint64_t make_h1(uint64_t hash) {
 	return (hash << 7) >> 7;
 }
@@ -176,12 +174,17 @@ void map_distribute(map_t* map) {
 void map_configure(map_t* map, unsigned size) {
 	map->size = size + map->key_size;
 
-	unsigned x = DEFAULT_BUCKETS * map_bucket_size(map);
-	map->buckets = heap(x);
+	map->buckets = heap(DEFAULT_BUCKETS * map_bucket_size(map));
 
-	for (unsigned i = 0; i < map->num_buckets; i++) {
-		memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
-	}
+	memset(map->buckets, 0, map_bucket_size(map)*map->num_buckets);
+}
+
+void map_clear(map_t* map) {
+	map->length=0;
+	map->num_buckets = DEFAULT_BUCKETS;
+
+	resize(map->buckets, DEFAULT_BUCKETS*map_bucket_size(map));
+	memset(map->buckets, 0, map_bucket_size(map)*map->num_buckets);
 }
 
 void map_configure_string_key(map_t* map, unsigned size) {
@@ -274,7 +277,7 @@ int map_next_unlocked(map_iterator* iterator) {
 			iterator->c = 0;
 		}
 
-		//if filled (we've already updated key, return
+		//if filled (we've already updated key), return
 		if (filled) {
 			return 1;
 		}
@@ -339,19 +342,19 @@ static int map_probe_next(map_probe_iterator* probe_iter) {
 static void* map_probe_match(map_probe_iterator* probe_iter, char* empty) {
 #if !defined(__SSE__) && !defined(__arm__)
 	*empty=1;
-	for (char i=0; i<16; i++) {
-		unsigned char c = probe_iter->current->control_bytes[i];
+	for (probe_iter->c=0; probe_iter->c<CONTROL_BYTES; probe_iter->c++) {
+		unsigned char c = probe_iter->current->control_bytes[probe_iter->c];
 		if (c!=0) {
+			*empty=0;
+
 			if (c==probe_iter->h2) {
 				void* compare_key =
-						(char*) probe_iter->current + CONTROL_BYTES + probe_iter->map->size*i;
+						(char*) probe_iter->current + CONTROL_BYTES + probe_iter->map->size*probe_iter->c;
 
 				if (probe_iter->map->compare(probe_iter->key, compare_key)) {
 					return compare_key;
 				}
 			}
-
-			*empty=0;
 		}
 	}
 
@@ -442,6 +445,13 @@ void* map_find_unlocked(map_t* map, void* key) {
   void* res = map_findkey_unlocked(map, key);
   if (res) res += map->key_size;
   return res;
+}
+
+void* map_findkey(map_t* map, void* key) {
+	if (map->lock) rwlock_read(map->lock);
+	void* res = map_findkey_unlocked(map, key);
+	if (map->lock) rwlock_unread(map->lock);
+	return res;
 }
 
 void* map_find(map_t* map, void* key) {
@@ -537,9 +547,7 @@ void map_resize(map_t* map) {
 			abort();
 		}
 
-		for (unsigned i = old_num_buckets; i < map->num_buckets; i++) {
-			memcpy(map->buckets + i * map_bucket_size(map), DEFAULT_BUCKET, CONTROL_BYTES);
-		}
+		memset(map->buckets + old_num_buckets*map_bucket_size(map), 0, (map->num_buckets-old_num_buckets)*map_bucket_size(map));
 
 		//rehash
 		map_iterator iter = map_iterate(map);

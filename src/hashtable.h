@@ -86,6 +86,7 @@ unsigned map_bucket_size(map_t* map);
 map_t map_new();
 void map_distribute(map_t* map);
 void map_configure(map_t* map, unsigned size);
+void map_clear(map_t* map);
 void map_configure_string_key(map_t* map, unsigned size);
 void map_configure_sized_key(map_t* map, unsigned size);
 void map_configure_uint_key(map_t* map, unsigned size);
@@ -99,6 +100,7 @@ int map_next(map_iterator* iterator);
 void map_next_delete(map_iterator* iterator);
 void* map_findkey_unlocked(map_t* map, void* key);
 void* map_find_unlocked(map_t* map, void* key);
+void* map_findkey(map_t* map, void* key);
 void* map_find(map_t* map, void* key);
 typedef struct {
 	char* pos;

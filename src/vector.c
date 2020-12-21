@@ -57,10 +57,9 @@ void vector_downsize(vector_t* vec) {
 }
 
 void vector_upsize(vector_t* vec, unsigned length) {
+	vec->length += length;
 	if (vec->flags & vector_cap) {
 		vector_cap_t* veccap = (vector_cap_t*)vec;
-
-		vec->length += length;
 
 		if (veccap->cap == 0) {
 			veccap->cap = length;
@@ -70,12 +69,10 @@ void vector_upsize(vector_t* vec, unsigned length) {
 			vec->data = resize(vec->data, vec->size * veccap->cap);
 		}
 
-	} else if (vec->length == 0) {
+	} else if (vec->length == length) {
 		//this is faster, no?
-		vec->length += length;
 		vec->data = heap(length * vec->size);
 	} else {
-		vec->length += length;
 		vec->data = resize(vec->data, vec->size * vec->length);
 	}
 }
@@ -193,11 +190,11 @@ int vector_remove(vector_t* vec, unsigned i) {
 	return 1;
 }
 
-char* vector_removeptr(vector_t* vec, unsigned i) {
+void* vector_removeptr(vector_t* vec, unsigned i) {
 	if (i >= vec->length)
 		return NULL;
 
-  char* ptr = *(char**)(vec->data + vec->size*i);
+	void* ptr = *(void**)(vec->data + vec->size*i);
 
 	vec->length--;
 
@@ -379,6 +376,12 @@ unsigned vector_search(vector_t* vec, void* elem) {
 	return 0;
 }
 
+int vector_search_remove(vector_t* vec, void* elem) {
+	unsigned i = vector_search(vec, elem);
+	if (i==0) return 0;
+	return vector_remove(vec, i-1);
+}
+
 unsigned vector_cmp(vector_t* vec1, vector_t* vec2) {
   if (vec1->length != vec2->length) return vec1->length;
 
@@ -458,7 +461,7 @@ vector_t vector_split_str(char* str, const char* delim) {
 vector_t vector_from_strings(char* start, unsigned num) {
 	vector_t vec = vector_new(sizeof(char*));
 	char** data = vector_stock(&vec, num);
-	
+
 	for (unsigned i=0; i<num; i++) {
 		data[i] = start;
 		start += strlen(start)+1;
@@ -497,7 +500,7 @@ void vector_expand_strings(vector_t* vec, vector_t* out, char* begin, char* deli
 
   vector_t str = vector_new(1);
   vector_stockcpy(&str, strlen(begin), begin);
-  
+
 	unsigned end_len = strlen(end)+1;
 	unsigned delim_len = strlen(delim);
 

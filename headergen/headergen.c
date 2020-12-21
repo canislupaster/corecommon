@@ -387,6 +387,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 	int is_static=0, is_inline=0;
 
 	while (1) {
+		int prevws=0;
 		while (!strchr(breakchr, *state->file)) {
 			if (skip_char(&state->file, ';')) {
 				prevstart=NULL; //a subset of nokeywords should stop function parsing, but ex. pointers are allowed
@@ -405,21 +406,37 @@ void skim(state* state, object_t* obj, char* breakchr) {
 
 		int pub = !is_static || is_inline;
 
+		if (!prevstart) prevstart = tok.start;
+
 		int is_enum = token_eq(tok, "enum");
 		if (token_eq(tok, "static")) {
-			is_static=1; prevstart = tok.start;
-			continue;
+			is_static=1; continue;
 		} else if (token_eq(tok, "inline")) {
-			is_inline=1; prevstart = tok.start;
-			continue;
+			is_inline=1; continue;
 		} else if (token_eq(tok, "typedef")) {
 			new = object_new(state);
 			skip_ws_comment(state);
-			skim(state, new, " \t\n");
 
-			token name = parse_token_ws(state);
+			token name = {.len=0};
+
+			while (1) {
+				skim(state, new, " (\t\n");
+
+				skip_ws_comment(state);
+				if (!skip_char(&state->file, '(')) break;
+				else if (state->parens!=0) continue;
+
+				state->parens++;
+				skip_ws_comment(state);
+				if (skip_char(&state->file, '*')) { //(*fnptr...
+					name = parse_token_ws(state);
+				}
+			}
+
+			if (!name.len) name = parse_token(state);
 			skim(state, new, ";");
 			skip_char(&state->file, ';');
+			prevstart=NULL;
 
 			str = token_str(state, name);
 			object_ref(state, str, new);
@@ -462,9 +479,10 @@ void skim(state* state, object_t* obj, char* breakchr) {
 					new->declaration = straffix(range(tok.start, state->file), ";");
 				} else {
 					new->declaration = range(tok.start, state->file);
+					prevstart=NULL;
 				}
 			}
-		} else if (prevstart && !state->in_def && state->braces==0 && state->parens==0) {
+		} else if (prevstart && prevstart!=tok.start && !state->in_def && state->braces==0 && state->parens==0) {
 			char* start = state->file;
 
 			skip_ws_comment(state);
@@ -479,9 +497,12 @@ void skim(state* state, object_t* obj, char* breakchr) {
 				parsed=1;
 			} else if (skip_char(&state->file, '(')) {
 				new = old ? old : object_new(state);
-				while (!skip_char(&state->file, ')') || state->parens>0) {
+
+				state->parens++;
+				while (state->parens>0) {
 					skip_char(&state->file, ',');
 					skim(state, new, ",)");
+					if (skip_char(&state->file, ')')) state->parens--;
 				}
 
 				new->declaration = straffix(range(prevstart, state->file), ";");
@@ -494,6 +515,8 @@ void skim(state* state, object_t* obj, char* breakchr) {
 						skip_char(&state->file, '}');
 						state->braces--;
 					}
+				} else { //forward decl
+					pub=0;
 				}
 
 				parsed=1;
@@ -506,6 +529,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 				}
 
 				is_static=0; is_inline=0;
+				prevstart=NULL;
 			}
 		}
 
@@ -517,8 +541,6 @@ void skim(state* state, object_t* obj, char* breakchr) {
 			if (obj) vector_pushcpy(&obj->deps, &str);
 			old = NULL;
 		}
-
-		if (!is_static && !is_inline) prevstart = tok.start;
 	}
 }
 
