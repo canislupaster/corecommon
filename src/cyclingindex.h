@@ -1,6 +1,7 @@
 // Automatically generated header.
 
 #pragma once
+#include <stdio.h>
 #include "vector.h"
 typedef struct {
 	vector_t bounds;

@@ -14,7 +14,7 @@
 #    include <sys/endian.h>
 #endif
 #if !((defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)))
-#    include "endian.h"
+#    include <endian.h>
 #endif
 #endif
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \

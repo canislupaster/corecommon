@@ -78,14 +78,14 @@ void vector_upsize(vector_t* vec, unsigned length) {
 }
 
 /// returns ptr to insertion point
-void* vector_push(vector_t* vec) {
+static inline void* vector_push(vector_t* vec) {
 	//allocate or resize
 	vector_upsize(vec, 1);
 
 	return vec->data + (vec->length - 1) * vec->size;
 }
 
-void* vector_pushcpy(vector_t* vec, void* x) {
+static inline void* vector_pushcpy(vector_t* vec, void* x) {
 	void* pos = vector_push(vec);
 	memcpy(pos, x, vec->size);
 	return pos;
@@ -120,7 +120,7 @@ unsigned vector_elem(vector_t* vec, char* ptr) {
   return (ptr - vec->data)/vec->size;
 }
 
-void* vector_get(vector_t* vec, unsigned i) {
+static inline void* vector_get(vector_t* vec, unsigned i) {
 	if (i >= vec->length) {
 		return NULL;
 	}
@@ -128,7 +128,7 @@ void* vector_get(vector_t* vec, unsigned i) {
 	return vec->data + i * vec->size;
 }
 
-char* vector_getstr(vector_t* vec, unsigned i) {
+static inline char* vector_getstr(vector_t* vec, unsigned i) {
 	char** x = vector_get(vec, i);
   return x ? *x : NULL;
 }
@@ -301,7 +301,7 @@ void* vector_setcpy(vector_t* vec, unsigned i, void* x) {
 	return pos;
 }
 
-vector_iterator vector_iterate(vector_t* vec) {
+static inline vector_iterator vector_iterate(vector_t* vec) {
 	vector_iterator iter = {
 			vec, .i=0
 	};
@@ -317,7 +317,7 @@ vector_iterator vector_iterate_end(vector_t* vec) {
 	return iter;
 }
 
-int vector_next(vector_iterator* iter) {
+static inline int vector_next(vector_iterator* iter) {
 	iter->x = iter->vec->data + iter->i * iter->vec->size;
 	iter->i++;
 
@@ -366,7 +366,7 @@ void vector_add(vector_t* from, vector_t* to) {
 	vector_stockcpy(to, from->length, from->data);
 }
 
-unsigned vector_search(vector_t* vec, void* elem) {
+static inline unsigned vector_search(vector_t* vec, void* elem) {
 	vector_iterator iter = vector_iterate(vec);
 	while (vector_next(&iter)) {
 		if (memcmp(iter.x, elem, vec->size)==0)

@@ -505,7 +505,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 					if (skip_char(&state->file, ')')) state->parens--;
 				}
 
-				new->declaration = straffix(range(prevstart, state->file), ";");
+				if (!is_inline) new->declaration = straffix(range(prevstart, state->file), ";");
 
 				skip_ws_comment(state);
 				if (!skip_char(&state->file, ';') && skip_char(&state->file, '{') && state->braces==0) {
@@ -518,6 +518,8 @@ void skim(state* state, object_t* obj, char* breakchr) {
 				} else { //forward decl
 					pub=0;
 				}
+
+				if (is_inline) new->declaration = range(prevstart, state->file);
 
 				parsed=1;
 			}

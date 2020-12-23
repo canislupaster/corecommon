@@ -39,10 +39,14 @@ void* resize(void* ptr, size_t size);
 char* getpath(char* path);
 char* read_file(char* path);
 #ifndef _WIN32 //already defined
-int max(int a, int b);
+static inline int max(int a, int b) {
+	return a>b?a:b;
+}
 #endif
 #ifndef _WIN32 //already defined
-int min(int a, int b);
+static inline int min(int a, int b) {
+	return a>b?b:a;
+}
 #endif
 char* path_trunc(char* path, unsigned up);
 char *ext(char *filename);
