@@ -75,17 +75,17 @@ void* vector_setget(vector_t* vec, unsigned i, char* exists);
 void* vector_setcpy(vector_t* vec, unsigned i, void* x);
 static inline vector_iterator vector_iterate(vector_t* vec) {
 	vector_iterator iter = {
-			vec, .i=0
+			vec, .i=(unsigned)-1
 	};
 
 	return iter;
 }
 vector_iterator vector_iterate_end(vector_t* vec);
 static inline int vector_next(vector_iterator* iter) {
-	iter->x = iter->vec->data + iter->i * iter->vec->size;
 	iter->i++;
+	iter->x = iter->vec->data + iter->i * iter->vec->size;
 
-	return iter->i <= iter->vec->length;
+	return iter->i < iter->vec->length;
 }
 int vector_prev(vector_iterator* iter);
 int vector_skip(vector_iterator* iter, unsigned i);
@@ -99,7 +99,7 @@ static inline unsigned vector_search(vector_t* vec, void* elem) {
 			return iter.i;
 	}
 
-	return 0;
+	return -1;
 }
 int vector_search_remove(vector_t* vec, void* elem);
 unsigned vector_cmp(vector_t* vec1, vector_t* vec2);

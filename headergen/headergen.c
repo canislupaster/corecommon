@@ -364,7 +364,7 @@ include* get_inc(file* f, char* str, vector_t* ifs) {
 			vector_iterator if_iter = vector_iterate(ifs);
 			int br=0;
 			while (vector_next(&if_iter)) {
-				if_t* other = vector_get(&inc->ifs, if_iter.i-1);
+				if_t* other = vector_get(&inc->ifs, if_iter.i);
 				if (!streq(((if_t*)if_iter.x)->cond, other->cond)) {
 					br=1;
 					break;
@@ -696,11 +696,11 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 	vector_iterator file_if_iter = vector_iterate(if_stack);
 	while (vector_next(&file_if_iter)) {
 		if_t *file_if = file_if_iter.x;
-		if_t *obj_if = vector_get(new_ifs, file_if_iter.i - 1);
+		if_t *obj_if = vector_get(new_ifs, file_if_iter.i);
 
 		if (!obj_if || !streq(obj_if->cond, file_if->cond) ||
 				obj_if->kind != file_if->kind) {
-			remove_to = file_if_iter.i - 1;
+			remove_to = file_if_iter.i;
 			break;
 		}
 	}
@@ -711,7 +711,7 @@ void set_ifs(file* gen_this, FILE* handle, vector_t* if_stack, vector_t* new_ifs
 	}
 
 	vector_iterator if_iter = vector_iterate(new_ifs);
-	if_iter.i = remove_to;  // add from point at which stack is divergent
+	if_iter.i = remove_to-1;  // add from point at which stack is divergent
 
 	while (vector_next(&if_iter)) {
 		if_t *_if = if_iter.x;

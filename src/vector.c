@@ -303,7 +303,7 @@ void* vector_setcpy(vector_t* vec, unsigned i, void* x) {
 
 static inline vector_iterator vector_iterate(vector_t* vec) {
 	vector_iterator iter = {
-			vec, .i=0
+			vec, .i=(unsigned)-1
 	};
 
 	return iter;
@@ -311,28 +311,28 @@ static inline vector_iterator vector_iterate(vector_t* vec) {
 
 vector_iterator vector_iterate_end(vector_t* vec) {
 	vector_iterator iter = {
-			vec, .i=vec->length-1
+			vec, .i=vec->length
 	};
 
 	return iter;
 }
 
 static inline int vector_next(vector_iterator* iter) {
-	iter->x = iter->vec->data + iter->i * iter->vec->size;
 	iter->i++;
+	iter->x = iter->vec->data + iter->i * iter->vec->size;
 
-	return iter->i <= iter->vec->length;
+	return iter->i < iter->vec->length;
 }
 
 int vector_prev(vector_iterator* iter) {
-	iter->x = iter->vec->data + iter->i * iter->vec->size;
-
-	if (iter->i == 0) {
+	if (iter->i == (unsigned)-1) {
 		return 0;
 	} else {
 		iter->i--;
-		return 1;
 	}
+
+	iter->x = iter->vec->data + iter->i * iter->vec->size;
+	return 1;
 }
 
 int vector_skip(vector_iterator* iter, unsigned i) {
@@ -373,13 +373,13 @@ static inline unsigned vector_search(vector_t* vec, void* elem) {
 			return iter.i;
 	}
 
-	return 0;
+	return -1;
 }
 
 int vector_search_remove(vector_t* vec, void* elem) {
 	unsigned i = vector_search(vec, elem);
-	if (i==0) return 0;
-	return vector_remove(vec, i-1);
+	if (i==-1) return 0;
+	return vector_remove(vec, i);
 }
 
 unsigned vector_cmp(vector_t* vec1, vector_t* vec2) {
@@ -387,7 +387,7 @@ unsigned vector_cmp(vector_t* vec1, vector_t* vec2) {
 
   vector_iterator iter = vector_iterate(vec1);
   while (vector_next(&iter)) {
-    char* elem2 = vector_get(vec2, iter.i-1);
+    char* elem2 = vector_get(vec2, iter.i);
     if (memcmp(iter.x, elem2, vec1->size)!=0) return iter.i;
   }
 
@@ -400,7 +400,7 @@ unsigned vector_cmpstr(vector_t* vec1, vector_t* vec2) {
   vector_iterator iter = vector_iterate(vec1);
   while (vector_next(&iter)) {
     char* elem1 = *(char**)iter.x;
-    char* elem2 = vector_getstr(vec2, iter.i-1);
+    char* elem2 = vector_getstr(vec2, iter.i);
     if (!streq(elem1, elem2)) return iter.i;
   }
 
@@ -438,7 +438,7 @@ void vector_sort_inplace(vector_t* vec, size_t offset, size_t size) {
 			memcpy((char*)iter.x+vec->size, (char*)iter.x, vector_get(vec, prev_pos-1)-iter.x);
 			memcpy(iter.x, temp, vec->size);
 
-			iter.i = prev_pos;
+			iter.i = prev_pos-1;
 			rev=0;
 		}
 	}
@@ -512,7 +512,7 @@ void vector_expand_strings(vector_t* vec, vector_t* out, char* begin, char* deli
 
     vector_stockcpy(&str, end_len, end);
 
-    start[iter.i-1] = heapcpystr(str.data);
+    start[iter.i] = heapcpystr(str.data);
     vector_truncate(&str, str.length-end_len);
   }
 
