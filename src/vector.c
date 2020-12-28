@@ -35,11 +35,6 @@ vector_t vector_new(unsigned size) {
 	return vec;
 }
 
-vector_cap_t vector_alloc(vector_t vec, unsigned cap) {
-	vec.flags |= vector_cap;
-	return (vector_cap_t){.vec=vec, .cap=vec.length+cap};
-}
-
 //requires heap allocated str
 vector_t vector_from_string(char* str) {
 	return (vector_t){.size=1, .length=strlen(str)+1, .data=str};
@@ -75,6 +70,17 @@ void vector_upsize(vector_t* vec, unsigned length) {
 	} else {
 		vec->data = resize(vec->data, vec->size * vec->length);
 	}
+}
+
+vector_cap_t vector_alloc(vector_t vec, unsigned cap) {
+	vec.flags |= vector_cap;
+
+	if (cap>0) {
+		if (vec.length>0) vec.data = resize(vec.data, vec.size*(vec.length+cap));
+		else vec.data = heap(vec.size*cap);
+	}
+
+	return (vector_cap_t){.vec=vec, .cap=vec.length+cap};
 }
 
 /// returns ptr to insertion point
@@ -484,15 +490,18 @@ void vector_flatten_strings(vector_t* vec, vector_t* out, char* delim, unsigned 
 }
 
 void vector_clear(vector_t* vec) {
-	if (vec->length>0)
+	if (vec->length>0 && ~vec->flags & vector_cap)
 		drop(vec->data);
 
 	vec->length = 0;
 }
 
 void vector_free(vector_t* vec) {
-	if (vec->length>0)
+	if (vec->length>0) {
 		drop(vec->data);
+	} else if (vec->flags & vector_cap) {
+		if (((vector_cap_t*)vec)->cap>0) drop(vec->data);
+	}
 }
 
 void vector_expand_strings(vector_t* vec, vector_t* out, char* begin, char* delim, char* end) {
@@ -525,6 +534,5 @@ void vector_free_strings(vector_t* vec) {
 		drop(*(char**)iter.x);
 	}
 
-	if (vec->length>0)
-		drop(vec->data);
+	vector_free(vec);
 }
