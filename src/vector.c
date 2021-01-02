@@ -5,7 +5,7 @@
 
 //small byte arrays, big stax
 typedef enum {
-	vector_cap = 0x1
+	vector_cap = 1
 } vector_flags_t;
 
 typedef struct {
@@ -226,15 +226,16 @@ int vector_removemany(vector_t* vec, unsigned i, unsigned len) {
 	return 1;
 }
 
-int vector_remove_element(vector_t* vec, char* x) {
-	if (x >= vec->size * vec->length + vec->data)
+int vector_remove_element(vector_t* vec, void* x) {
+	char* xchar = x;
+	if (xchar >= vec->size * vec->length + vec->data)
 		return 0;
 
 	vec->length--;
 
-	memcpy(x,
-				 x + vec->size,
-				 (vec->data + vec->length * vec->size) - x);
+	memcpy(xchar,
+				 xchar + vec->size,
+				 (vec->data + vec->length * vec->size) - xchar);
 
 	vector_downsize(vec);
 	return 1;
@@ -327,18 +328,14 @@ static inline int vector_next(vector_iterator* iter) {
 	iter->i++;
 	iter->x = iter->vec->data + iter->i * iter->vec->size;
 
-	return iter->i < iter->vec->length;
+	return iter->i<iter->vec->length;
 }
 
 int vector_prev(vector_iterator* iter) {
-	if (iter->i == (unsigned)-1) {
-		return 0;
-	} else {
-		iter->i--;
-	}
-
+	iter->i--;
 	iter->x = iter->vec->data + iter->i * iter->vec->size;
-	return 1;
+
+	return iter->i!=-1;
 }
 
 int vector_skip(vector_iterator* iter, unsigned i) {
@@ -487,6 +484,16 @@ void vector_flatten_strings(vector_t* vec, vector_t* out, char* delim, unsigned 
 			vector_stockcpy(out, len, delim);
 		}
 	}
+}
+
+void vector_swap(vector_t* vec1, vector_t* vec2) {
+	char* data_swp = vec1->data;
+	vec1->data = vec2->data;
+	vec2->data = data_swp;
+
+	unsigned len = vec1->length;
+	vec1->length = vec2->length;
+	vec2->length = len;
 }
 
 void vector_clear(vector_t* vec) {
