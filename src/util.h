@@ -38,6 +38,7 @@ int streq(char* str1, char* str2);
 int strsstr(char** strs, int len, char* str);
 void* resize(void* ptr, size_t size);
 char* getpath(char* path);
+void* meminsert(void* x, void* y, unsigned i, unsigned len, unsigned sz);
 char* read_file(char* path);
 #ifndef _WIN32 //already defined
 static inline int max(int a, int b) {

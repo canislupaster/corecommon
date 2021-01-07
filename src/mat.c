@@ -28,6 +28,12 @@ void mat_mul(mat_t* a, mat_t* b, mat_t* out) {
 	}
 }
 
+void mat_mul_vec3(mat_t* a, float* v, float* out) {
+	out[0] = a->vals[0]*v[0] + a->vals[3]*v[1] + a->vals[6]*v[2];
+	out[1] = a->vals[1]*v[0] + a->vals[4]*v[1] + a->vals[7]*v[2];
+	out[2] = a->vals[2]*v[0] + a->vals[5]*v[1] + a->vals[8]*v[2];
+}
+
 typedef struct {
 	float* vals;
 	int diag;
@@ -51,6 +57,14 @@ float* tri_mat_cell(tri_mat_t* mat, int x, int y) {
 
 float* tri_mat_col(tri_mat_t* mat, int x) {
 	return mat->lo ? mat->vals + (((mat->diag-x)*((mat->diag-x)+1))/2)-1 : mat->vals + ((x*(x+1))/2)-1;
+}
+
+float tri_mat_det(tri_mat_t* mat) {
+	float d=0;
+	for (int x=0; x<mat->diag; x++)
+		d *= *tri_mat_cell(mat, x, x);
+
+	return d;
 }
 
 void tri_mat_inverse(tri_mat_t* mat, tri_mat_t* inverse) {
@@ -211,26 +225,32 @@ int mat_lu(mat_t* mat, tri_mat_t* l, tri_mat_t* u) {
 	return 1;
 }
 
-int mat_inverse(mat_t* mat, mat_t* inverse) {
-	tri_mat_t l = tri_mat_new(mat->rows, 1);
-	tri_mat_t u = tri_mat_new(mat->cols, 0);
-	if (!mat_lu(mat, &l, &u)) {
-		drop(l.vals);
-		drop(u.vals);
+int mat_inverse_lu(mat_t* mat, mat_t* inverse, tri_mat_t* l, tri_mat_t* u) {
+	if (!mat_lu(mat, l, u)) {
 		return 0;
 	}
 
 	tri_mat_t l_inv = tri_mat_new(mat->rows, 1);
 	tri_mat_t u_inv = tri_mat_new(mat->rows, 0);
-	tri_mat_inverse(&l, &l_inv);
-	tri_mat_inverse(&u, &u_inv);
+	tri_mat_inverse(l, &l_inv);
+	tri_mat_inverse(u, &u_inv);
 
 	tri_mat_mul(&u_inv, &l_inv, inverse);
 
-	drop(l.vals);
-	drop(u.vals);
 	drop(l_inv.vals);
 	drop(u_inv.vals);
+
+	return 1;
+}
+
+int mat_inverse(mat_t* mat, mat_t* inverse) {
+	tri_mat_t l = tri_mat_new(mat->rows, 1);
+	tri_mat_t u = tri_mat_new(mat->cols, 0);
+
+	mat_inverse_lu(mat, inverse, &l, &u);
+
+	drop(l.vals);
+	drop(u.vals);
 
 	return 1;
 }

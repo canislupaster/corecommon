@@ -187,6 +187,14 @@ char* getpath(char* path) {
 	return new_path;
 }
 
+//resize and memcpys, so i can stop converting to vec
+void* meminsert(void* x, void* y, unsigned i, unsigned len, unsigned sz) {
+	x = resize(y, (len+1)*sz);
+	memcpy(x+sz*i+sz, x+sz*i, (len-i)*sz);
+	memcpy(x+sz*i, y, sz);
+	return x;
+}
+
 char* read_file(char* path) {
 	FILE *handle = fopen(path, "rb");
   if (!handle) {
