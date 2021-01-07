@@ -35,6 +35,7 @@ char* stradd(char* str1, char* str2);
 char* strpre(char* str, char* prefix);
 char* straffix(char* str, char* affix);
 int streq(char* str1, char* str2);
+int strsstr(char** strs, int len, char* str);
 void* resize(void* ptr, size_t size);
 char* getpath(char* path);
 char* read_file(char* path);
@@ -57,6 +58,7 @@ void memcheck();
 #endif
 char hexchar(char hex);
 void charhex(unsigned char chr, char* out);
+extern char B64_ALPHABET[64];
 unsigned char* bit_reinterpret(unsigned char* src, unsigned inlen, unsigned* outlen, unsigned char inl, unsigned char outl);
 char* base64_encode(char* src, unsigned len);
 char* base64_decode(char* src, unsigned* len);

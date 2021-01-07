@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 typedef enum {
-	vector_cap = 0x1
+	vector_cap = 1
 } vector_flags_t;
 typedef struct {
 	vector_flags_t flags;

@@ -4,8 +4,8 @@
 #include <math.h>
 #include <stdint.h>
 typedef float vec3[3];
-extern vec3 VEC3_0;
-extern vec3 VEC3_1;
+extern const vec3 VEC3_0;
+extern const vec3 VEC3_1;
 void vec3cpy(const vec3 from, vec3 to);
 void vec3scale(vec3 v, float s, vec3 out);
 void vec3cross(vec3 v1, vec3 v2, vec3 out);

@@ -95,8 +95,8 @@ typedef struct {
 	filemap_partial_object obj;
 } filemap_iterator;
 void write_slots(filemap_index_t* index, unsigned int slots);
-extern uint64_t INDEX_PREAMBLE;
-extern uint64_t ORDER_INDEX_PREAMBLE;
+extern const uint64_t INDEX_PREAMBLE;
+extern const uint64_t ORDER_INDEX_PREAMBLE;
 filemap_t filemap_new(char* data, unsigned fields, int overwrite);
 filemap_index_t filemap_index_new(filemap_t* fmap, char* index, unsigned field, int overwrite);
 filemap_list_t filemap_list_new(char* list, int overwrite);

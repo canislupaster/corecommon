@@ -63,7 +63,7 @@ typedef struct {
 	void* val;
 	char exists;
 } map_insert_result;
-extern uint8_t MAP_SENTINEL_H2;
+extern const uint8_t MAP_SENTINEL_H2;
 uint64_t hash_string(char** x);
 typedef struct {
   char* bin;

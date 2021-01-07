@@ -104,9 +104,10 @@ typedef struct {
 
 char* SKIP = "!*=<>/-+&[],.:|%^@;";
 // braindump, just add more if it breaks
-char *SKIP_WORDS[] = {"extern", "case",  "switch", "while", "for",
-                      "do",     "const", "if",     "else",  "return"};
-char *SKIP_TYPES[] = {"int", "char", "long", "double", "float", "void"};
+char* SKIP_WORDS[] = {"extern", "case",  "switch", "while", "for",
+                      "const", "restrict", "volatile",
+                      "do",     "if",     "else",  "return"};
+char* SKIP_TYPES[] = {"int", "char", "long", "double", "float", "void"};
 
 int parse_comment(state *state) {
   // skip comments
@@ -197,10 +198,6 @@ int skip_nokeyword(state *state) {
   if (*state->file &&
       (strchr("0123456789", *state->file) || strchr(SKIP, *state->file))) {
     state->file++;
-    return 1;
-  }
-
-  if (skip_list(state, SKIP_WORDS, sizeof(SKIP_WORDS))) {
     return 1;
   }
 
@@ -391,17 +388,25 @@ void skim(state* state, object_t* obj, char* breakchr) {
 		while (!strchr(breakchr, *state->file)) {
 			if (skip_char(&state->file, ';')) {
 				prevstart=NULL; //a subset of nokeywords should stop function parsing, but ex. pointers are allowed
-				continue;
+			} else if (!skip_ws_comment_once(state) && !skip_nokeyword(state)) {
+				break;
 			}
-
-			if (skip_ws_comment_once(state) || skip_nokeyword(state)) continue;
-			else break;
 		}
 
-		if (strchr(breakchr, *state->file)) break;
+		if (strchr(breakchr, *state->file)) {
+			break;
+		} else {
+			char* start = state->file;
+			if (skip_list(state, SKIP_WORDS, sizeof(SKIP_WORDS))) {
+				if (!prevstart) {
+					prevstart = start;
+				}
+
+				continue;
+			}
+		}
 
 		token tok = parse_token(state);
-		char* str = token_str(state, tok);
 		if (tok.len==0) break;
 
 		int pub = !is_static || is_inline;
@@ -438,7 +443,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 			skip_char(&state->file, ';');
 			prevstart=NULL;
 
-			str = token_str(state, name);
+			char* str = token_str(state, name);
 			object_ref(state, str, new);
 			object_push(state, str, new);
 			new->declaration = range(tok.start, state->file);
@@ -447,10 +452,13 @@ void skim(state* state, object_t* obj, char* breakchr) {
 			token name = parse_token_ws(state);
 			skip_ws_comment(state);
 
+			char* str = token_str(state, tok);
 			if (name.len) str = heapstr("%s %s", str, token_str(state, name));
 
 			int sep=1;
 			if (skip_char(&state->file, '{') && !skip_char(&state->file, ';')) {
+				state->braces++;
+
 				if (is_enum) {
 					while (!skip_char(&state->file, '}')) {
 						if (skip_ws_comment(state) || skip_char(&state->file, ',')) continue;
@@ -462,6 +470,8 @@ void skim(state* state, object_t* obj, char* breakchr) {
 					skim(state, new, "}");
 					skip_char(&state->file, '}');
 				}
+
+				state->braces--;
 
 				if ((sep=strchr(breakchr, *state->file)==NULL)) {
 					skip_ws_comment(state);
@@ -483,49 +493,55 @@ void skim(state* state, object_t* obj, char* breakchr) {
 				}
 			}
 		} else if (prevstart && prevstart!=tok.start && !state->in_def && state->braces==0 && state->parens==0) {
-			char* start = state->file;
-
-			skip_ws_comment(state);
 			int parsed=0;
-			if (skip_char(&state->file, '=')) {
-				new = old ? old : object_new(state);
-				new->declaration = heapstr("extern %s;", range(prevstart, start));
 
-				do skim(state, new, ";"); while (state->braces!=0 && state->parens!=0);
-				skip_char(&state->file, ';');
+			do {
+				if (state->in_def || state->braces!=0 || state->parens!=0) break;
 
-				parsed=1;
-			} else if (skip_char(&state->file, '(')) {
-				new = old ? old : object_new(state);
-
-				state->parens++;
-				while (state->parens>0) {
-					skip_char(&state->file, ',');
-					skim(state, new, ",)");
-					if (skip_char(&state->file, ')')) state->parens--;
-				}
-
-				if (!is_inline) new->declaration = straffix(range(prevstart, state->file), ";");
-
+				char* start = state->file;
 				skip_ws_comment(state);
-				if (!skip_char(&state->file, ';') && skip_char(&state->file, '{') && state->braces==0) {
-					state->braces++;
-					while (state->braces>0) {
-						skim(state, NULL, "}"); //dont add deps
-						skip_char(&state->file, '}');
-						state->braces--;
+
+				if (*state->file==';' || skip_char(&state->file, '=')) {
+					new = old ? old : object_new(state);
+					new->declaration = heapstr("extern %s;", range(prevstart, start));
+
+					do skim(state, new, ";"); while (state->braces!=0 && state->parens!=0);
+					skip_char(&state->file, ';');
+
+					parsed=1;
+				} else if (skip_char(&state->file, '(')) {
+					new = old ? old : object_new(state);
+
+					state->parens++;
+					while (state->parens>0) {
+						skip_char(&state->file, ',');
+						skim(state, new, ",)");
+						if (skip_char(&state->file, ')')) state->parens--;
 					}
-				} else { //forward decl
-					pub=0;
+
+					if (!is_inline) new->declaration = straffix(range(prevstart, state->file), ";");
+
+					skip_ws_comment(state);
+					if (!skip_char(&state->file, ';') && skip_char(&state->file, '{') && state->braces==0) {
+						state->braces++;
+						while (state->braces>0) {
+							skim(state, NULL, "}"); //dont add deps
+							skip_char(&state->file, '}');
+							state->braces--;
+						}
+					} else { //forward decl
+						pub=0;
+					}
+
+					if (is_inline) new->declaration = range(prevstart, state->file);
+
+					parsed=1;
 				}
-
-				if (is_inline) new->declaration = range(prevstart, state->file);
-
-				parsed=1;
-			}
+			} while (!parsed && skip_nokeyword(state));
 
 			if (parsed) {
 				if (pub) {
+					char* str = token_str(state, tok);
 					object_ref(state, str, new);
 					if (!old) object_push(state, str, new);
 				}
@@ -539,6 +555,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 			old = new;
 			new = NULL;
 		} else {
+			char* str = token_str(state, tok);
 			vector_pushcpy(&state->current->deps, &str);
 			if (obj) vector_pushcpy(&obj->deps, &str);
 			old = NULL;

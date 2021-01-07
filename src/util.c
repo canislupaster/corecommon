@@ -148,6 +148,11 @@ int streq(char* str1, char* str2) {
 	return strcmp(str1, str2)==0;
 }
 
+int strsstr(char** strs, int len, char* str) {
+	for (int i=0; i<len; i++) if (streq(strs[i], str)) return i;
+	return -1;
+}
+
 void* resize(void* ptr, size_t size) {
 	void* res = realloc(ptr, size);
 
