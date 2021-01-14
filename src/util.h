@@ -64,4 +64,4 @@ unsigned char* bit_reinterpret(unsigned char* src, unsigned inlen, unsigned* out
 char* base64_encode(char* src, unsigned len);
 char* base64_decode(char* src, unsigned* len);
 void perrorx(char* err);
-void errx(char* err);
+char* errx(const char* fmt, ...);
