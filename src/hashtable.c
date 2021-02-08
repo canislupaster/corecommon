@@ -179,14 +179,6 @@ void map_configure(map_t* map, unsigned size) {
 	memset(map->buckets, 0, map_bucket_size(map)*map->num_buckets);
 }
 
-void map_clear(map_t* map) {
-	map->length=0;
-	map->num_buckets = DEFAULT_BUCKETS;
-
-	resize(map->buckets, DEFAULT_BUCKETS*map_bucket_size(map));
-	memset(map->buckets, 0, map_bucket_size(map)*map->num_buckets);
-}
-
 void map_configure_string_key(map_t* map, unsigned size) {
 	map->key_size = sizeof(char*); //string reference is default key
 
@@ -646,7 +638,27 @@ int map_remove(map_t* map, void* key) {
 	return res;
 }
 
+void map_freeall(map_t* map) {
+	if (!map->free) return;
+
+	map_iterator iter = map_iterate(map);
+	while (map_next(&iter)) {
+		map->free(iter.key);
+	}
+}
+
+void map_clear(map_t* map) {
+	map_freeall(map);
+
+	map->length=0;
+	map->num_buckets = DEFAULT_BUCKETS;
+
+	resize(map->buckets, DEFAULT_BUCKETS*map_bucket_size(map));
+	memset(map->buckets, 0, map_bucket_size(map)*map->num_buckets);
+}
+
 void map_free(map_t* map) {
+	map_freeall(map);
 	drop(map->buckets);
 	if (map->lock) rwlock_free(map->lock);
 }

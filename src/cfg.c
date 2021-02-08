@@ -150,7 +150,7 @@ void configure(map_t* default_cfg, char* file) {
 	while (1) {
 		skip_ws(&cfgc);
 		if (!*cfgc) break;
-		
+
 		char* name = parse_name(&cfgc);
 
 		config_val* val = map_find(default_cfg, &name);
@@ -189,7 +189,7 @@ void save_configure(map_t* cfg, char* file) {
 	FILE* f = fopen(path, "w"); drop(path);
 
 	if (!f) return;
-	
+
 	map_iterator iter = map_iterate(cfg);
 	while (map_next(&iter)) {
 		config_val* val = iter.x;

@@ -525,7 +525,7 @@ void skim(state* state, object_t* obj, char* breakchr) {
 					if (!skip_char(&state->file, ';') && skip_char(&state->file, '{') && state->braces==0) {
 						state->braces++;
 						while (state->braces>0) {
-							skim(state, NULL, "}"); //dont add deps
+							skim(state, is_inline ? new : NULL, "}");
 							skip_char(&state->file, '}');
 							state->braces--;
 						}
