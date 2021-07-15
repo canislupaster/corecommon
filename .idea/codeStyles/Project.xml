@@ -1,0 +1,23 @@
+<component name="ProjectCodeStyleConfiguration">
+  <code_scheme name="Project" version="173">
+    <option name="DO_NOT_FORMAT">
+      <list>
+        <fileSet type="namedScope" name="Unnamed" pattern="file:*" />
+      </list>
+    </option>
+    <Objective-C>
+      <option name="INDENT_NAMESPACE_MEMBERS" value="2" />
+      <option name="INDENT_C_STRUCT_MEMBERS" value="2" />
+      <option name="INDENT_CLASS_MEMBERS" value="2" />
+      <option name="INDENT_INSIDE_CODE_BLOCK" value="2" />
+    </Objective-C>
+    <codeStyleSettings language="ObjectiveC">
+      <indentOptions>
+        <option name="INDENT_SIZE" value="2" />
+        <option name="TAB_SIZE" value="2" />
+        <option name="USE_TAB_CHARACTER" value="true" />
+        <option name="SMART_TABS" value="true" />
+      </indentOptions>
+    </codeStyleSettings>
+  </code_scheme>
+</component>
