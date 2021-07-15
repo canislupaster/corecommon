@@ -1,8 +1,10 @@
-#include <stdio.h>
-#include "vector.h"
+#ifndef SRC_CYCLINGINDEX_HPP_
+#define SRC_CYCLINGINDEX_HPP_
 
-typedef struct {
-	vector_t bounds;
+#include <vector>
+
+struct {
+	std::vector<unsigned> bounds;
 	unsigned i;
 	unsigned new_bound;
 } cycling_index_t;
@@ -35,3 +37,5 @@ unsigned cindex_get(cycling_index_t* cin) {
 unsigned cindex_start(cycling_index_t* cin) {
 	return cin->i==0?0:*(unsigned*)vector_get(&cin->bounds, cin->i-1);
 }
+
+#endif //SRC_CYCLINGINDEX_HPP_
