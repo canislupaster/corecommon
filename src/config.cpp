@@ -12,7 +12,7 @@ void Config::parse(std::string const& str) {
 					(Multiple(TupleMap(
 									Many(ParseWS()) + ParseString(Many(!LookAhead(sep) + Any())).skip(sep),
 
-									((ParseFloat().skip(newline) + ResultMap<float, Value>([](float x){ return Value {.is_default=false, .var=Variant(x)}; }))
+									Ignore<std::string>() + ((ParseFloat().skip(newline) + ResultMap<float, Value>([](float x){ return Value {.is_default=false, .var=Variant(x)}; }))
 									 || (ParseInt().skip(newline) + ResultMap<long, Value>([](long x){ return Value {.is_default=false, .var=Variant(x)}; }))
 
 									 || ((Match("true") + ResultMap<Unit, Value>([](auto x){ return Value {.is_default=false, .var=Variant(true)}; })
@@ -28,6 +28,21 @@ void Config::parse(std::string const& str) {
 }
 
 std::stringstream Config::save() {
-	//TODO:
-	return std::stringstream(); //TROLLOLOLOL
+	std::stringstream ss;
+
+	for (std::pair<std::string, Value>& kv: map) {
+		if (!kv.second.is_default) {
+			ss << kv.first << " = ";
+
+			std::visit(overloaded {
+				[&](auto x){ ss << x; },
+				[&](std::string const& x){ ss << '"' << x << '"'; },
+				[&](bool x){ ss << (x ? "true" : "false"); }
+			}, kv.second.var);
+
+			ss << std::endl;
+		}
+	}
+
+	return ss;
 }

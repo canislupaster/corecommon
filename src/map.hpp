@@ -403,14 +403,14 @@ class Map {
 		using pointer = std::pair<K,V>*;
 		using reference = std::pair<K,V>&;
 
-		unsigned c;
+		size_t c;
 		typename std::vector<ControlBytes, ControlBytesAllocator>::iterator iter;
 		std::vector<Bucket, BucketAllocator>& buckets;
 
 		void operator++() {
 			while (true) {
 				for (;c%NUM_CONTROL_BYTES!=0; c++) {
-					if (*iter[c%NUM_CONTROL_BYTES]!=0 && *iter[c%NUM_CONTROL_BYTES]!=SENTINEL) {
+					if ((*iter)[c%NUM_CONTROL_BYTES]!=0 && (*iter)[c%NUM_CONTROL_BYTES]!=SENTINEL) {
 						return;
 					}
 				}
@@ -420,20 +420,20 @@ class Map {
 			}
 		}
 
-		bool operator==(Iterator& other) {
-			return c==other->c;
+		bool operator==(Iterator const& other) const {
+			return c==other.c;
 		}
 
-		bool operator!=(Iterator& other) {
-			return c!=other->c;
+		bool operator!=(Iterator const& other) const {
+			return c!=other.c;
 		}
 
 		std::pair<K,V>& operator*() {
-			return &buckets[c];
+			return buckets[c];
 		}
 
 		std::pair<K,V>& operator->() {
-			return &buckets[c];
+			return buckets[c];
 		}
 	};
 
@@ -441,7 +441,7 @@ class Map {
 		return {.c=0, .buckets=buckets, .iter=control_bytes.begin()};
 	}
 
-	Iterator end() const {
+	Iterator end() {
 		return {.c=buckets.size(), .buckets=buckets, .iter=control_bytes.end()};
 	}
 };

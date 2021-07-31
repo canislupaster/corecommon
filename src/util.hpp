@@ -140,4 +140,18 @@ std::string read_file(const char* path);
 unsigned gcd(unsigned a, unsigned b);
 unsigned lcm(unsigned a, unsigned b);
 
+char hexchar(char hex);
+void charhex(unsigned char chr, char* out);
+
+//for constructing an overloaded lambda
+//eg. overloaded {
+//            [](auto arg) { std::cout << arg << ' '; },
+//            [](double arg) { std::cout << std::fixed << arg << ' '; },
+//            [](const std::string& arg) { std::cout << std::quoted(arg) << ' '; }
+//        }
+//(from https://en.cppreference.com/w/cpp/utility/variant/visit)
+
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 #endif //CORECOMMON_SRC_UTIL_HPP_

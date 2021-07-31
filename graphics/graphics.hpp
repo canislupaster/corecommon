@@ -40,7 +40,8 @@ public:
 		}
 
 		void save(const char* fname) const {
-
+			std::fstream f(fname);
+			f << Config::save();
 		}
 	};
 

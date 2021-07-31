@@ -6,6 +6,7 @@ project(corecommon)
 find_package(PkgConfig REQUIRED)
 
 file(GLOB SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
+list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/database.hpp)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
@@ -52,6 +53,7 @@ if (server)
 
     find_library(LIBEVENT libevent.a)
     find_library(LIBEVENT_PTHREADS libevent_pthreads.a)
+    find_path(LIBEVENT_INCLUDE NAMES event2)
 
     find_package(OpenSSL REQUIRED)
 
@@ -59,5 +61,5 @@ if (server)
     find_package(Threads REQUIRED)
 
     target_link_libraries(server PUBLIC corecommon ${LIBEVENT} ${LIBEVENT_PTHREADS} ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
-    target_include_directories(server PUBLIC ${OPENSSL_INCLUDE_DIR})
+    target_include_directories(server PUBLIC ${OPENSSL_INCLUDE_DIR} ${LIBEVENT_INCLUDE})
 endif()

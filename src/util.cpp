@@ -5,6 +5,7 @@
 
 //kinda copied from https://nachtimwald.com/2017/09/24/hex-encode-and-decode-in-c/
 //since im too lazy to type all these ifs
+
 char hexchar(char hex) {
 	if (hex >= '0' && hex <= '9') {
 		return hex - '0';

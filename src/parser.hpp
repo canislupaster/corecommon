@@ -20,6 +20,7 @@ enum class ParseStatus {
 	Expected,
 	Unexpected,
 	EndOfFile,
+	Error,
 	Value
 };
 
@@ -50,13 +51,10 @@ class Parser {
 	Parser(char const* text, Result default_res): span(text), res(default_res), stat(ParseStatus::None), err(false) {}
 
 	template<class OldResult>
-	Parser(Parser<OldResult>& parser, Result res): span(parser.span), res(res), stat(ParseStatus::None), err(false) {}
-
-	Parser(Parser<Result>& parser):
-					res(parser.res), span(parser.span), stat(parser.stat), err(parser.err), expected(parser.expected) {}
+	Parser(Parser<OldResult> const& parser, Result res): span(parser.span), res(res), stat(ParseStatus::None), err(false) {}
 
 	template<class OldResult>
-	Parser(Parser<OldResult>& parser):
+	explicit Parser(Parser<OldResult> const& parser):
 		span(parser.span), stat(parser.stat), err(parser.err), expected(parser.expected) {}
 
 	ParserSpan span;
@@ -104,7 +102,12 @@ public:
 	using From = FromArg;
 	using To = ToArg;
 
-	Parser<To> operator()(Parser<From>& parser) const {
+	size_t length(Parser<From> const& parser) const {
+		Parser<To> to = static_cast<T const*>(this)->run(parser);
+		return to.span.start - parser.span.start;
+	}
+
+	Parser<To> operator()(Parser<From> const& parser) const {
 		return static_cast<T const*>(this)->run(parser);
 	}
 
@@ -128,21 +131,49 @@ public:
 	}
 };
 
+template<class From, class To>
+struct LazyMap: public ParseMap<LazyMap<From, To>, From, To> {
+	const std::function<Parser<To>(Parser<From> const&)> lzmap;
+
+	LazyMap(std::function<Parser<To>(Parser<From> const&)> lazymap): lzmap(lzmap) {}
+
+	Parser<To> run(Parser<From> const& parser) const {
+		//:#
+		return lzmap(parser);
+	}
+};
 
 template<class From, class To>
 struct ResultMap: public ParseMap<ResultMap<From, To>, From, To> {
 	const std::function<To(From)> resmap;
 
 	ResultMap(std::function<To(From)> resmap): resmap(resmap) {}
+	ResultMap(To x): resmap([x](From from){return x;}) {}
 
-	Parser<To> run(Parser<From>& parser) const {
+	Parser<To> run(Parser<From> const& parser) const {
 		return Parser<To>(parser, resmap(parser.res));
+	}
+};
+
+template<class From>
+struct ErrorMap: public ParseMap<ErrorMap<From>, From, From> {
+	const std::function<bool(From)> cond;
+
+	ErrorMap(std::function<bool(From)> cond): cond(cond) {}
+
+	Parser<From> run(Parser<From> const& parser) const {
+		if (cond(parser.res)) {
+			parser.err = true;
+			parser.stat = ParseStatus::Error;
+		}
+
+		return parser;
 	}
 };
 
 template<class OldResult>
 struct Ignore: public ParseMap<Ignore<OldResult>, OldResult, Unit> {
-	Parser<Unit> run(Parser<OldResult>& parser) const {
+	Parser<Unit> run(Parser<OldResult> const& parser) const {
 		return Parser<Unit>(parser);
 	}
 };
@@ -154,15 +185,12 @@ struct TupleMap: public ParseMap<TupleMap<Head, Rest...>, typename Head::From, s
 
 	TupleMap(Head head, Rest... rest): head(head), rest(rest...) {}
 
-	Parser<typename TupleMap<Head, Rest...>::To> run(Parser<typename Head::From>& parser) const {
+	Parser<typename TupleMap<Head, Rest...>::To> run(Parser<typename Head::From> const& parser) const {
 		Parser<typename Head::To> head_parser = head(parser);
-
 		if (head_parser.err)
 			return Parser<typename TupleMap<Head, Rest...>::To>(head_parser);
 
-		parser.span = head_parser.span;
-		Parser<typename TupleMap<Rest...>::To> rest_parser = rest(parser);
-
+		Parser<typename TupleMap<Rest...>::To> rest_parser = rest(head_parser);
 		if (rest_parser.err)
 			return Parser<typename TupleMap<Head, Rest...>::To>(rest_parser);
 
@@ -176,7 +204,7 @@ struct TupleMap<Head>: public ParseMap<TupleMap<Head>, typename Head::From, std:
 
 	TupleMap(Head head): head(head) {}
 
-	Parser<std::tuple<typename Head::To>> run(Parser<typename Head::From>& parser) const {
+	Parser<std::tuple<typename Head::To>> run(Parser<typename Head::From> const& parser) const {
 		Parser<typename Head::To> head_parser = head(parser);
 		if (head_parser.err) return Parser<std::tuple<typename Head::To>>(head_parser);
 		return Parser(head_parser, std::tuple(head_parser.res));
@@ -187,17 +215,15 @@ template<class InnerMap>
 struct Not: public ParseMap<Not<InnerMap>, Unit, Unit> {
 	const InnerMap inner;
 
-	Parser<Unit> run(Parser<Unit>& parser) const {
+	Parser<Unit> run(Parser<Unit> const& parser) const {
 		Parser<Unit> to_parser = inner(parser);
 
-		parser.span = to_parser.span;
+		if (to_parser.stat == ParseStatus::Expected) to_parser.stat = ParseStatus::Unexpected;
+		else if (to_parser.stat == ParseStatus::Unexpected) to_parser.stat = ParseStatus::Expected;
 
-		if (to_parser.stat == ParseStatus::Expected) parser.stat = ParseStatus::Unexpected;
-		else if (to_parser.stat == ParseStatus::Unexpected) parser.stat = ParseStatus::Expected;
+		to_parser.err = !to_parser.err;
 
-		parser.err = !to_parser.err;
-
-		return parser;
+		return to_parser;
 	}
 };
 
@@ -206,7 +232,7 @@ struct LookAhead: public ParseMap<LookAhead<InnerMap>, typename InnerMap::From, 
 	const InnerMap inner;
 	LookAhead(InnerMap inner): inner(inner) {}
 
-	Parser<typename InnerMap::To> run(Parser<typename InnerMap::From>& parser) const {
+	Parser<typename InnerMap::To> run(Parser<typename InnerMap::From> const& parser) const {
 		Parser<typename InnerMap::To> inner_parser = inner(parser);
 		inner_parser.span = parser.span;
 		return inner_parser;
@@ -218,7 +244,7 @@ struct Chain: public ParseMap<Chain<Left, Right>, typename Left::From, typename 
 	const Left left;
 	const Right right;
 
-	Parser<typename Right::To> run(Parser<typename Left::From>& parser) const {
+	Parser<typename Right::To> run(Parser<typename Left::From> const& parser) const {
 		Parser<typename Left::To> left_parser = left(parser);
 		if (left_parser.err) return Parser<typename Right::To>(left_parser);
 
@@ -232,14 +258,12 @@ struct Skip: public ParseMap<Skip<Result, SkipMap>, Result, Result> {
 
 	Skip(SkipMap skip): skip(skip) {}
 
-	Parser<Result> run(Parser<Result>& parser) const {
+	Parser<Result> run(Parser<Result> const& parser) const {
 		Parser<Unit> unit_parser(parser, Unit());
 		Parser<Unit> skip_parser = skip(unit_parser);
 
 		if (skip_parser.err) return Parser<Result>(skip_parser);
-		parser.span = skip_parser.span;
-
-		return parser;
+		return Parser<Result>(skip_parser, parser.res);
 	}
 };
 
@@ -251,22 +275,41 @@ struct Multiple: public ParseMap<Multiple<InnerMap>, typename InnerMap::From, st
 	Multiple(size_t min, size_t max, InnerMap inner): min(min), max(max), inner(inner) {}
 	Multiple(InnerMap inner): min(0), max(std::numeric_limits<size_t>::max()), inner(inner) {}
 
-	Parser<std::vector<typename InnerMap::To>> run(Parser<typename InnerMap::From>& parser) const {
+	Parser<std::vector<typename InnerMap::To>> run(Parser<typename InnerMap::From> const& parser) const {
+		Parser<typename InnerMap::From> new_parser = parser;
 		std::vector<typename InnerMap::To> vec(min);
 
 		for (unsigned i=0; i<max; i++) {
-			Parser<typename InnerMap::To> inner_parser = inner(parser);
+			Parser<typename InnerMap::To> inner_parser = inner(new_parser);
 
 			if (inner_parser.err) {
 				if (i<min) return Parser<std::vector<typename InnerMap::To>>(inner_parser);
-				else return Parser<std::vector<typename InnerMap::To>>(parser, vec);
+				else return Parser(new_parser, vec);
 			}
 
-			parser.span = inner_parser.span;
+			new_parser.span = inner_parser.span;
 			vec.push_back(inner_parser.res);
 		}
 
-		return Parser(parser, vec);
+		return Parser(new_parser, vec);
+	}
+};
+
+template<size_t n, class InnerMap>
+struct ArrayMap: public ParseMap<ArrayMap<n, InnerMap>, typename InnerMap::From, std::array<typename InnerMap::To, n>> {
+	const InnerMap inner;
+	ArrayMap(InnerMap inner): inner(inner) {}
+
+	Parser<std::array<typename InnerMap::To, n>> run(Parser<typename InnerMap::From> const& parser) const {
+		std::array<typename InnerMap::To, n> arr;
+
+		for (unsigned i=0; i<n; i++) {
+			Parser<typename InnerMap::To> inner_parser = inner(parser);
+			parser.span = inner_parser.span;
+			arr[i] = inner_parser.res;
+		}
+
+		return Parser(parser, arr);
 	}
 };
 
@@ -278,19 +321,20 @@ struct Many: public ParseMap<Many<InnerMap>, typename InnerMap::From, Unit> {
 	Many(size_t min, size_t max, InnerMap inner): min(min), max(max), inner(inner) {}
 	Many(InnerMap inner): min(0), max(std::numeric_limits<size_t>::max()), inner(inner) {}
 
-	Parser<Unit> run(Parser<typename InnerMap::From>& parser) const {
+	Parser<Unit> run(Parser<typename InnerMap::From> const& parser) const {
+		Parser<typename InnerMap::From> new_parser = parser;
 		for (unsigned i=0; i<max; i++) {
-			Parser<typename InnerMap::To> inner_parser = inner(parser);
+			Parser<typename InnerMap::To> inner_parser = inner(new_parser);
 
 			if (inner_parser.err) {
 				if (i<min) return Parser<Unit>(inner_parser);
-				else return Parser<Unit>(parser, Unit());
+				else return Parser<Unit>(new_parser, Unit());
 			}
 
-			parser.span = inner_parser.span;
+			new_parser.span = inner_parser.span;
 		}
 
-		return Parser<Unit>(parser, Unit());
+		return Parser<Unit>(new_parser, Unit());
 	}
 };
 
@@ -299,7 +343,7 @@ struct Or: public ParseMap<Or<Left, Right>, typename Left::From, typename Left::
 	const Left left;
 	const Right right;
 
-	Parser<typename Left::To> run(Parser<typename Left::From>& parser) const {
+	Parser<typename Left::To> run(Parser<typename Left::From> const& parser) const {
 		Parser<typename Left::To> left_parser = left(parser);
 		if (!left_parser.err) return left_parser;
 
@@ -312,7 +356,7 @@ struct ParseString: public ParseMap<ParseString<InnerMap>, typename InnerMap::Fr
 	InnerMap inner;
 	ParseString(InnerMap inner): inner(inner) {}
 
-	Parser<std::string> run(Parser<typename InnerMap::From>& parser) const {
+	Parser<std::string> run(Parser<typename InnerMap::From> const& parser) const {
 		char const* start = parser.span.text;
 		Parser<typename InnerMap::To> inner_parser = inner(parser);
 		return Parser<std::string>(inner_parser, std::string(start, inner_parser.span.text - start));
@@ -320,45 +364,65 @@ struct ParseString: public ParseMap<ParseString<InnerMap>, typename InnerMap::Fr
 };
 
 struct Any: public ParseMap<Any, Unit, Unit> {
-	Parser<Unit> run(Parser<Unit>& parser) const {
-		parser.stat = ParseStatus::Expected;
-		parser.expected = "anything";
+	Parser<Unit> run(Parser<Unit> const& parser) const {
+		Parser<Unit> new_parser = parser;
+		new_parser.stat = ParseStatus::Expected;
+		new_parser.expected = "anything";
 
 		if (parser.span.length==0) {
-			parser.err=true;
+			new_parser.err=true;
 		} else {
-			parser.span+=1;
+			new_parser.span+=1;
 		}
 
-		return parser;
+		return new_parser;
+	}
+};
+
+struct Char: public ParseMap<Char, Unit, char> {
+	Parser<char> run(Parser<Unit> const& parser) const {
+		auto char_parser = Parser<char>(parser);
+		char_parser.stat = ParseStatus::Expected;
+		char_parser.expected = "a character";
+
+		if (parser.span.length==0) {
+			char_parser.err=true;
+		} else {
+			char_parser.res = *parser.span.start;
+			char_parser.span+=1;
+		}
+
+		return char_parser;
 	}
 };
 
 struct ParseEOF: public ParseMap<ParseEOF, Unit, Unit> {
-	Parser<Unit> run(Parser<Unit>& parser) const {
-		parser.stat = ParseStatus::Expected;
-		parser.expected = "end of input";
+	Parser<Unit> run(Parser<Unit> const& parser) const {
+		Parser<Unit> new_parser = parser;
+		new_parser.stat = ParseStatus::Expected;
+		new_parser.expected = "end of input";
 
-		if (parser.span.length!=0) {
-			parser.err=true;
+		if (new_parser.span.length!=0) {
+			new_parser.err=true;
 		}
 
-		return parser;
+		return new_parser;
 	}
 };
 
 struct ParseWS: public ParseMap<ParseWS, Unit, Unit> {
-	Parser<Unit> run(Parser<Unit>& parser) const {
-		parser.stat = ParseStatus::Expected;
-		parser.expected = "whitespace";
+	Parser<Unit> run(Parser<Unit> const& parser) const {
+		Parser<Unit> new_parser = parser;
+		new_parser.stat = ParseStatus::Expected;
+		new_parser.expected = "whitespace";
 
-		if (parser.span.length==0 || strchr("\r\n ", *parser.span.text)==nullptr) {
-			parser.err=true;
+		if (new_parser.span.length==0 || strchr("\r\n ", *new_parser.span.text)==nullptr) {
+			new_parser.err=true;
 		} else {
-			parser.span+=1;
+			new_parser.span+=1;
 		}
 
-		return parser;
+		return new_parser;
 	}
 };
 
@@ -366,55 +430,59 @@ struct Match: public ParseMap<Match, Unit, Unit> {
 	char const* match;
 	Match(char const* match): match(match) {}
 
-	Parser<Unit> run(Parser<Unit>& parser) const {
-		parser.stat = ParseStatus::Expected;
-		parser.expected = match;
+	Parser<Unit> run(Parser<Unit> const& parser) const {
+		Parser<Unit> new_parser = parser;
+		new_parser.stat = ParseStatus::Expected;
+		new_parser.expected = match;
 
-		if (parser.span.length<strlen(match) || strncmp(parser.span.text, match, strlen(match))!=0) {
-			parser.err=true;
+		if (new_parser.span.length<strlen(match) || strncmp(new_parser.span.text, match, strlen(match))!=0) {
+			new_parser.err=true;
 		} else {
-			parser.span += strlen(match);
+			new_parser.span += strlen(match);
 		}
 
-		return parser;
+		return new_parser;
 	}
 };
 
 struct ParseInt: public ParseMap<ParseInt, Unit, long> {
-	Parser<long> run(Parser<Unit>& parser) const {
+	Parser<long> run(Parser<Unit> const& parser) const {
 		char* end;
-		long x = strtol(parser.span.text, &end, 10);
+		
+		auto new_parser = Parser<long>(parser);
+		new_parser.res = strtol(parser.span.text, &end, 10);
 
-		parser.stat = ParseStatus::Value;
+		new_parser.stat = ParseStatus::Value;
 
-		if (end==parser.span.text) {
-			parser.err=true;
-			return Parser<long>(parser);
+		if (end==new_parser.span.text) {
+			new_parser.err=true;
+			return new_parser;
 		}
 
-		parser.span.length -= end-parser.span.text;
-		parser.span.text = end;
+		new_parser.span.length -= end-new_parser.span.text;
+		new_parser.span.text = end;
 
-		return Parser(parser, x);
+		return new_parser;
 	}
 };
 
 struct ParseFloat: public ParseMap<ParseFloat, Unit, float> {
-	Parser<float> run(Parser<Unit>& parser) const {
+	Parser<float> run(Parser<Unit> const& parser) const {
 		char* end;
-		float x = strtof(parser.span.text, &end);
+		auto new_parser = Parser<float>(parser);
 
-		parser.stat = ParseStatus::Value;
+		new_parser.res = strtof(parser.span.text, &end);
+		new_parser.stat = ParseStatus::Value;
 
-		if (end==parser.span.text) {
-			parser.err=true;
-			return Parser<float>(parser);
+		if (end==new_parser.span.text) {
+			new_parser.err=true;
+			return new_parser;
 		}
 
-		parser.span.length -= end-parser.span.text;
-		parser.span.text = end;
+		new_parser.span.length -= end-new_parser.span.text;
+		new_parser.span.text = end;
 
-		return Parser(parser, x);
+		return new_parser;
 	}
 };
 
