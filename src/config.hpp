@@ -2,6 +2,7 @@
 #define SRC_CONFIG_HPP_
 
 #include <string>
+#include <sstream>
 #include <variant>
 
 #include "map.hpp"
@@ -16,7 +17,9 @@ struct Config {
 
 	Map<std::string, Value> map;
 	void parse(const std::string& str);
-	std::stringstream save();
+	std::stringstream save() const;
+
+	Config() = default;
 };
 
 #endif //SRC_CONFIG_HPP_

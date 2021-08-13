@@ -5,7 +5,12 @@
 #include <initializer_list>
 #include <cmath>
 
+#include <optional>
 #include <array>
+#include <limits>
+
+//completely arbitrary!
+static constexpr float Epsilon = std::numeric_limits<float>::epsilon()*64;
 
 template<size_t num_rows, size_t num_cols>
 struct Matrix;
@@ -46,25 +51,63 @@ struct Vector {
 		return ret;
 	}
 
-	Vector cross(Vector const& other) const {
-		Vector out {
-			v[1]*other[2]-v[2]*other[1],
-			v[0]*other[2]-v[2]*other[0],
-			v[0]*other[1]-v[1]*other[0]
-		};
-
-		return out;
-	}
-
 	float norm() const {
-		float ret=0;
-		for (size_t i=0; i<n; i++) ret += v[i]*v[i];
-		return sqrtf(ret);
+		return sqrtf(this->dot(*this));
 	}
 
-	void normalize(float length) {
-		float mag = norm();
-		for (size_t i=0; i<n; i++) v[i] *= length/mag;
+	float norm_sq() const {
+		return this->dot(*this);
+	}
+
+	//perpendicular, clockwise of original vector, swap arguments for negative determinant
+	Vector<n> perpendicular(size_t i, size_t j) const {
+		Vector<n> vec(0.0f);
+		vec[i] = v[j];
+		vec[j] = -v[i];
+		return vec;
+	}
+
+	struct Intersection {
+		float c1, c2; //intersection located at x1+off1*c1, x2+off2*c2
+		Vector pos;
+
+		bool in_segment() {
+			return c1>=0 && c1<=1 && c2>=0 && c2<=1;
+		}
+
+		bool in_segment_no_endpoints() {
+			return c1>0 && c1<1 && c2>0 && c2<1;
+		}
+	};
+
+	static std::optional<Intersection> intersect(Vector<n> const& x1, Vector<n> const& off1, Vector<n> const& x2, Vector<n> const& off2) {
+		for (size_t i = 0; i < n; i++) {
+			if (x1[i]==x2[i]) continue;
+
+			for (size_t j = 0; j < n; j++) {
+				if (i==j) continue;
+
+				float m1 = off1[i]/off1[j];
+				float i_offset = x2[j]-x1[j];
+				float x = (x2[i]-x1[i]-m1*i_offset)/(m1 - off2[i]/off2[j]);
+
+				if (x==NAN) return std::optional<Intersection>();
+
+				Intersection intersection {.c1=(i_offset+x)/off1[j], .c2=x/off2[j]};
+				intersection.pos = x2 + off2*intersection.c2;
+
+				if (n<=2 || x1+off1*intersection.c1 - intersection.pos < Epsilon) {
+					intersection.c1 = intersection.c1 - std::remainder(intersection.c1, Epsilon);
+					intersection.c2 = intersection.c2 - std::remainder(intersection.c2, Epsilon);
+
+					return std::optional(intersection);
+				} else {
+					return std::optional<Intersection>();
+				}
+			}
+		}
+
+		return std::optional(Intersection {.pos=x1, .c1=0, .c2=0});
 	}
 
 	Vector& operator*=(Vector const& other) {
@@ -147,6 +190,43 @@ struct Vector {
 		return v[i];
 	}
 
+	bool operator>=(float other) const {
+		for (size_t i = 0; i < n; i++) { if (v[i]<other) return false; }
+		return true;
+	}
+
+	bool operator>(float other) const {
+		for (size_t i = 0; i < n; i++) { if (v[i]<=other) return false; }
+		return true;
+	}
+
+	bool operator<(float other) const {
+		for (size_t i = 0; i < n; i++) { if (v[i]>=other) return false; }
+		return true;
+	}
+
+	bool operator<=(float other) const {
+		for (size_t i = 0; i < n; i++) { if (v[i]>other) return false; }
+		return true;
+	}
+
+	bool operator==(float other) const {
+		for (size_t i = 0; i < n; i++) { if (v[i]!=other) return false; }
+		return true;
+	}
+
+	bool operator==(Vector const& other) const {
+		return v==other.v;
+	}
+
+	bool operator!=(Vector const& other) const {
+		return v!=other.v;
+	}
+
+	Vector<n> normalize(float length) const {
+		return *this*(length/norm());
+	}
+
 	float* begin() {
 		return v.begin();
 	}
@@ -154,7 +234,37 @@ struct Vector {
 	float* end() {
 		return v.end();
 	}
+
+	float const* begin() const {
+		return v.begin();
+	}
+
+	float const* end() const {
+		return v.end();
+	}
 };
+
+struct Vec2: Vector<2> {
+	//implicit conversions 🤡
+	using Vector<2>::Vector;
+	Vec2(Vector<2> const& vec2): Vector<2>(vec2) {}
+	Vec2(Vector<2>&& vec2): Vector<2>(vec2) {}
+
+	float determinant(Vec2 const& other) const;
+	Vec2 rotate_by(Vec2 const& other);
+	Vec2 reflect(Vec2 const& other);
+};
+
+struct Vec3: Vector<3> {
+	using Vector<3>::Vector;
+	Vec3(Vector<3> const& vec3): Vector<3>(vec3) {}
+	Vec3(Vector<3>&& vec3): Vector<3>(vec3) {}
+
+	float determinant(Vector const& other) const;
+	Vec3 cross(Vec3 const& other) const;
+};
+
+using Vec4 = Vector<4>;
 
 template<size_t n, bool lower>
 struct TriangularMatrix;
@@ -170,13 +280,19 @@ struct Matrix {
 
 	Matrix(std::initializer_list<Vector<num_rows>> list): cols(list) {}
 
+	Matrix(std::initializer_list<float> diag): cols() {
+		for (size_t col=0; col<num_cols; col++) {
+			cols[col][col] = *(diag.begin()+col);
+		}
+	}
+
 	Matrix(float diag): cols() {
 		for (size_t col=0; col<num_cols; col++) {
 			cols[col][col] = diag;
 		}
 	}
 
-	static Matrix<3,3> cross(Vector<3> vec) {
+	static Matrix<3,3> cross(Vec3 vec) {
 		return Matrix({
 			{0,-vec[2],vec[1]},
 			{vec[3],0,-vec[0]},
@@ -184,7 +300,7 @@ struct Matrix {
 		});
 	}
 
-	static Matrix<3,3> rotate_3d(Matrix<3,3> mat, Vector<3> axis, float angle) {
+	static Matrix<3,3> rotate_3d(Matrix<3,3> mat, Vec3 axis, float angle) {
 		return mat*cosf(angle) + axis.outer_product(axis*(1-cosf(angle))) + Matrix::cross(axis)*sinf(angle);
 	}
 
@@ -438,22 +554,24 @@ struct SquareMatrix: public Matrix<n,n> {
 	}
 };
 
-using Matrix3 = Matrix<3,3>;
+using Mat2 = Matrix<2, 2>;
+using Mat3 = Matrix<3, 3>;
+using Mat4 = Matrix<4, 4>;
 
 struct Rotation3D {
 	//standard quaternion
 	float cos;
-	Vector<3> axis;
+	Vec3 axis;
 
 	Rotation3D() = default;
-	Rotation3D(Vector<3> axis, float angle);
-	static Rotation3D from_quat(Vector<3> sin_axis, float cos);
+	Rotation3D(Vec3 axis, float angle);
+	static Rotation3D from_quat(Vec3 sin_axis, float cos);
 	Rotation3D& operator*=(Rotation3D const& other);
 	Rotation3D conjugate() const;
 
-	Matrix3 to_matrix() const;
+	Mat3 to_matrix() const;
 
-	Vector<3> operator*(Vector<3> const& v) const;
+	Vec3 operator*(Vec3 const& v) const;
 };
 
 #endif //CORECOMMON_SRC_FIELD_HPP_

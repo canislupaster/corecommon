@@ -29,7 +29,7 @@ Database::BlockRef::Address Database::BlockRef::insert(uint16_t size, unsigned c
 }
 
 Database::BlockRef Database::map_block(uint64_t idx) {
-	return Database::BlockRef(*this, reinterpret_cast<Block*>(mmap(NULL, sizeof(Block), PROT_WRITE | PROT_READ, MAP_SHARED, fileno(file), idx)), idx);
+	return Database::BlockRef(*this, reinterpret_cast<Block*>(mmap(nullptr, sizeof(Block), PROT_WRITE | PROT_READ, MAP_SHARED, fileno(file), idx)), idx);
 }
 
 Database::BlockRef Database::make_block() {

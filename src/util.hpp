@@ -29,6 +29,65 @@ struct Identity {
 	using type=T;
 };
 
+template<class T>
+struct False {
+	constexpr static bool value=false;
+};
+
+template<class T>
+struct LazyInitialize {
+	std::optional<T> t;
+	std::function<T&&()> init;
+	explicit LazyInitialize(std::function<T()> initializer): t(), init(initializer) {}
+
+	T& operator*() {
+		if (!t) {
+			t = init();
+		}
+
+		return *t;
+	}
+
+	T* operator->() {
+		return &*this;
+	}
+};
+
+//std::optional but w/o extra bool and it must be initialized
+//im aware its a shitty idea to do this just to shave off a byte
+template<class T>
+struct LateInitialize {
+	union {
+		T data;
+		char buf[sizeof(T)];
+	};
+
+	T& operator*() {
+		return data;
+	}
+
+	T* operator->() {
+		return &data;
+	}
+
+	LateInitialize() {}
+
+	//...
+	LateInitialize& operator=(T const& t) {
+		new(buf) T(t);
+		return *this;
+	}
+
+	LateInitialize& operator=(T&& t) {
+		new(buf) T(std::move(t));
+		return *this;
+	}
+
+	~LateInitialize() {
+		data.~T();
+	}
+};
+
 template<class T, size_t static_size>
 class StaticSlice {
  public:
@@ -139,6 +198,7 @@ std::string read_file(const char* path);
 
 unsigned gcd(unsigned a, unsigned b);
 unsigned lcm(unsigned a, unsigned b);
+size_t binomial(size_t n, size_t k);
 
 char hexchar(char hex);
 void charhex(unsigned char chr, char* out);

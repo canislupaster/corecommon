@@ -8,8 +8,8 @@ find_package(PkgConfig REQUIRED)
 file(GLOB SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/database.hpp)
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+#set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 
 add_library(corecommon ${SRC})
 
@@ -32,6 +32,8 @@ foreach(TEST ${TESTS})
 	target_link_libraries(${NAME} corecommon)
 endforeach()
 
+add_executable(rawstringifier rawstringifier.cpp)
+
 if (graphics)
     add_library(graphics ${CMAKE_CURRENT_SOURCE_DIR}/graphics/graphics.cpp)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/graphics)
@@ -42,8 +44,14 @@ if (graphics)
 
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
 
-    target_include_directories(graphics PUBLIC ${FREETYPE_INCLUDE_DIRS})
-    target_link_libraries(graphics PUBLIC PkgConfig::SDL2 ${OPENGL_LIBRARY} ${FREETYPE_LIBRARY})
+    target_link_libraries(graphics PUBLIC PkgConfig::SDL2 Freetype::Freetype OpenGL::GL corecommon)
+
+    file(GLOB SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/**)
+    foreach(SHADER ${SHADERS})
+        get_filename_component(SHADER_NAME ${SHADER} NAME)
+        add_custom_target(${SHADER_NAME} COMMAND rawstringifier ${SHADER} > ${CMAKE_CURRENT_SOURCE_DIR}/graphics/include/${SHADER_NAME} DEPENDS ${SHADER})
+        add_dependencies(graphics ${SHADER_NAME})
+    endforeach()
 endif()
 
 if (server)

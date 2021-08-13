@@ -17,8 +17,6 @@
 #include <emmintrin.h>
 #endif
 
-#include "bitflags.hpp"
-
 template<class K, class V, bool multiple=false, template<class> class Allocator = std::allocator>
 class Map {
  public:
@@ -71,6 +69,33 @@ class Map {
 		bucket->first = k;
 		bucket->second = v;
 		return std::optional<V>();
+	}
+
+	V& upsert(K k) {
+		check_resize();
+
+		size_t h = do_hash(k);
+		Probe p = Probe(*this, h);
+
+		Bucket* bucket;
+		if (multiple) {
+			while (!(bucket = p.insert(k))) ++p;
+		} else {
+			while (true) {
+				MatchResult res = p.match(k);
+				if ((bucket=res.match)) {
+					return bucket->second;
+				} else if (!res.cont) {
+					bucket=p.insert(k);
+					break;
+				}
+
+				++p;
+			}
+		}
+
+		bucket->first = k;
+		return bucket->second;
 	}
 
 	std::optional<V> remove(K& k) {
@@ -408,15 +433,16 @@ class Map {
 		std::vector<Bucket, BucketAllocator>& buckets;
 
 		void operator++() {
-			while (true) {
-				for (;c%NUM_CONTROL_BYTES!=0; c++) {
+			if (++c % NUM_CONTROL_BYTES == 0) ++iter; //ha! c++! geddit?!1
+
+			while (c<buckets.size()) {
+				do {
 					if ((*iter)[c%NUM_CONTROL_BYTES]!=0 && (*iter)[c%NUM_CONTROL_BYTES]!=SENTINEL) {
 						return;
 					}
-				}
+				} while (++c % NUM_CONTROL_BYTES != 0);
 
 				++iter;
-				if (c==buckets.size()) return;
 			}
 		}
 
@@ -437,11 +463,62 @@ class Map {
 		}
 	};
 
+	//same thing except const
+	struct ConstIterator {
+		using iterator_category = std::input_iterator_tag;
+		using difference_type = void;
+		using value_type = std::pair<K,V>;
+		using pointer = std::pair<K,V> const*;
+		using reference = std::pair<K,V> const&;
+
+		size_t c;
+		typename std::vector<ControlBytes, ControlBytesAllocator>::const_iterator iter;
+		std::vector<Bucket, BucketAllocator> const& buckets;
+
+		void operator++() {
+			if (++c % NUM_CONTROL_BYTES == 0) ++iter; //ha! c++! geddit?!1
+
+			while (c<buckets.size()) {
+				do {
+					if ((*iter)[c%NUM_CONTROL_BYTES]!=0 && (*iter)[c%NUM_CONTROL_BYTES]!=SENTINEL) {
+						return;
+					}
+				} while (++c % NUM_CONTROL_BYTES != 0);
+
+				++iter;
+			}
+		}
+
+		bool operator==(ConstIterator const& other) const {
+			return c==other.c;
+		}
+
+		bool operator!=(ConstIterator const& other) const {
+			return c!=other.c;
+		}
+
+		std::pair<K,V> const& operator*() {
+			return buckets[c];
+		}
+
+		std::pair<K,V> const& operator->() {
+			return buckets[c];
+		}
+	};
+
 	Iterator begin() {
 		return {.c=0, .buckets=buckets, .iter=control_bytes.begin()};
 	}
 
 	Iterator end() {
+		return {.c=buckets.size(), .buckets=buckets, .iter=control_bytes.end()};
+	}
+
+	ConstIterator begin() const {
+		return {.c=0, .buckets=buckets, .iter=control_bytes.begin()};
+	}
+
+	ConstIterator end() const {
 		return {.c=buckets.size(), .buckets=buckets, .iter=control_bytes.end()};
 	}
 };

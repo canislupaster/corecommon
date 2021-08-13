@@ -152,3 +152,15 @@ unsigned lcm(unsigned a, unsigned b) {
 	unsigned x = gcd(a,b);
 	return (a*b)/x;
 }
+
+size_t binomial(size_t n, size_t k) {
+	if (n<k) return 0;
+
+	size_t res=1;
+	for (size_t i = k+1; i <= n; i++) {
+		res *= i;
+		res /= i-k;
+	}
+
+	return res;
+}
