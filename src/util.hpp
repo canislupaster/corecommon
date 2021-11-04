@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 #include <vector>
+#include <optional>
 
 template<class Arg, class ...Args>
 struct VarArgList {
@@ -37,12 +38,12 @@ struct False {
 template<class T>
 struct LazyInitialize {
 	std::optional<T> t;
-	std::function<T&&()> init;
+	std::function<T()> init;
 	explicit LazyInitialize(std::function<T()> initializer): t(), init(initializer) {}
 
 	T& operator*() {
 		if (!t) {
-			t = init();
+			t = std::move(init());
 		}
 
 		return *t;
@@ -53,8 +54,7 @@ struct LazyInitialize {
 	}
 };
 
-//std::optional but w/o extra bool and it must be initialized
-//im aware its a shitty idea to do this just to shave off a byte
+//ok, learned the hard way dont use in classes that arent noexcept constructible!
 template<class T>
 struct LateInitialize {
 	union {
@@ -80,6 +80,12 @@ struct LateInitialize {
 
 	LateInitialize& operator=(T&& t) {
 		new(buf) T(std::move(t));
+		return *this;
+	}
+
+	template<class ...Args>
+	LateInitialize& operator()(Args&&... args) {
+		new(buf) T(std::forward<Args>(args)...);
 		return *this;
 	}
 

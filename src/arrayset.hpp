@@ -10,6 +10,7 @@ struct ArraySet {
 	std::vector<T> vec;
 	size_t elements;
 	ArraySet(size_t elements, size_t len): elements(elements), vec(binomial(len, elements)) {}
+	ArraySet(size_t elements, size_t len, T const& value): elements(elements), vec(binomial(len, elements), value) {}
 
 	typename std::vector<T>::reference operator[](size_t* idx) {
 		std::vector<size_t> elem_vec(idx, idx+elements);
@@ -47,9 +48,6 @@ struct ArraySet {
 			}
 
 			t++;
-			if (ref[elem_vec.data()]!=*t) {
-				throw std::runtime_error("oops, throw computer in ditch");
-			}
 		}
 
 		bool operator==(Iterator const& other) {

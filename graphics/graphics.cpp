@@ -1,5 +1,4 @@
 #include "graphics.hpp"
-
 #include "arrayset.hpp"
 
 LazyInitialize<FillShader> fill_shader([](){return FillShader();});
@@ -52,6 +51,7 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
+	glEnable(GL_STENCIL_TEST);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -65,15 +65,15 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	glBindFramebuffer(GL_FRAMEBUFFER, tex_fbo);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	passthrough = std::move(TexShader<>(std::shared_ptr<VertShader>(new VertShader(
+	passthrough.emplace(std::shared_ptr<VertShader>(new VertShader(
 #include "./include/passthrough.vert"
 	)), std::shared_ptr<FragShader>(new FragShader(
 #include "./include/tex.frag"
-	)), nullptr));
+	)), (char const*[]){"tex_transform"});
 
-	full_rect = std::move(Geometry(Path {.points={{-1,1}, {1,1}, {1,-1}, {-1,-1}}, .fill=true, .closed=true}));
+	full_rect.emplace(Path {.points={{-1,1}, {1,1}, {1,-1}, {-1,-1}}, .fill=true, .closed=true});
 
-	object_ubo = UniformBuffer<Mat4, Mat4>();
+	object_ubo.emplace();
 	object_ubo->set_data(std::tuple(Mat4(1), Mat4(1)));
 	object_ubo->use(static_cast<GLint>(BlockIndices::Object));
 
@@ -123,6 +123,7 @@ Window::~Window() {
 void Window::use() {
 	if (in_use) {
 		in_use->finish();
+		glViewport(0,0, static_cast<int>(bounds[0]),static_cast<int>(bounds[1]));
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		object_ubo->use(static_cast<GLint>(BlockIndices::Object));
 		in_use = nullptr;
@@ -171,7 +172,7 @@ Texture::Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, b
 		Texture(wind, format, internalformat, size, nullptr, multisample) {}
 
 Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, other.multisample) {
-	other.proc(*wind.passthrough, *this, std::tuple());
+	other.proc(*wind.passthrough, *this, std::tuple(Mat3(1)));
 }
 
 Texture::Texture(Texture&& other): wind(other.wind), multisample(other.multisample), format(other.format), internalformat(other.internalformat), size(other.size), idx(other.idx) {
@@ -374,63 +375,50 @@ Geometry::Geometry(Path const& path): vertices(), elements() {
 	triangulate(path);
 }
 
-void Geometry::triangulate(Path const& path, unsigned amt) {
-	Path stroked;
-	if (!path.fill) stroked = path.stroke();
-	Path const& path_ref = path.fill ? path : stroked;
+bool is_crossing(Vec2 const& p1, Vec2 const& p2, std::vector<std::reference_wrapper<const Path>> const& others) {
+	Vec2 off = p2-p1;
 
-	ArraySet<bool> crossings(2, path_ref.points.size());
+	size_t num_crossings=0;
+	for (auto other: others) {
+		Path const& other_ref = other.get();
 
-	//accurate, assuming no colinear points
-	bool convex=true;
-
-	for (auto x: crossings) {
-		Vec2 const& p1 = path_ref.points[x.first[0]];
-		Vec2 const& p2 = path_ref.points[x.first[1]];
-
-		if (x.first[0]==x.first[1]+1 || (x.first[0]==path_ref.points.size()-1 && x.first[1]==0)) {
-			x.second=true;
-			continue;
-		}
-
-		x.second=false;
-
-		Vec2 off = p2-p1;
-
-		size_t num_crossings=0;
-		for (size_t i=0; i<path_ref.points.size(); i++) {
-			Vec2 off2 = path_ref.points[i == path_ref.points.size()-1 ? 0 : i+1] - path_ref.points[i];
+		for (size_t i=0; i<other_ref.points.size(); i++) {
+			Vec2 off2 = other_ref.points[i == other_ref.points.size()-1 ? 0 : i+1] - other_ref.points[i];
 			if (off2>-Epsilon && off2<Epsilon) continue;
 
-			std::optional<Vec2::Intersection> crossing = Vec2::intersect(p1, off, path_ref.points[i], off2);
+			std::optional<Vec2::Intersection> crossing = Vec2::intersect(p1, off, other_ref.points[i], off2);
 
 			if (crossing && crossing->in_segment_no_endpoints()) {
-				x.second=true;
-				break;
+				return true;
 			} else if (crossing && crossing->c1>0 && crossing->c2==0) {
-				Vec2 off_before = path_ref.points[i==0 ? path_ref.points.size()-1 : i-1]-path_ref.points[i];
-				for (size_t i_minus=2; off_before>-Epsilon && off_before<Epsilon && i_minus<path_ref.points.size(); i_minus++)
-					off_before = path_ref.points[i_minus>=i ? path_ref.points.size()-i_minus+i : i-i_minus] - path_ref.points[i];
+				Vec2 off_before = other_ref.points[i==0 ? other_ref.points.size()-1 : i-1]-other_ref.points[i];
+				for (size_t i_minus=2; off_before>-Epsilon && off_before<Epsilon && i_minus<other_ref.points.size(); i_minus++)
+					 off_before = other_ref.points[i_minus>=i ? other_ref.points.size()-i_minus+i : i-i_minus] - other_ref.points[i];
 
 				if (std::signbit(off_before.determinant(off))!=std::signbit(off2.determinant(off))) {
-					if (crossing->c1<1) {
-						x.second=true;
-						break;
-					} else {
-						num_crossings++;
-					}
+					 if (crossing->c1<1) return true;
+					 num_crossings++;
 				}
 			} else if (crossing && crossing->c1>0 && crossing->c2>0 && crossing->c2<1) {
 				num_crossings++;
 			}
 		}
-
-		if (num_crossings%2==0) {
-			x.second=true;
-		}
-
-		if (x.second) convex=false;
 	}
+
+	return num_crossings%2==0;
+}
+
+void Geometry::triangulate(Path const& path) {
+	Path stroked;
+	if (!path.fill) stroked = path.stroke();
+	Path const& path_ref = path.fill ? path : stroked;
+
+	std::vector<GLuint> intermediate_verts(path_ref.points.size());
+	for (GLuint i = 0; i<path_ref.points.size(); i++) {
+		intermediate_verts[i]=i;
+	}
+
+	std::vector<bool> intermediate_verts_crossing(path_ref.points.size(), false);
 
 	auto elem_offset = static_cast<GLuint>(vertices.size());
 	vertices.reserve(vertices.size()+path_ref.points.size());
@@ -439,53 +427,53 @@ void Geometry::triangulate(Path const& path, unsigned amt) {
 		vertices.push_back(Vertex {.pos=Vec3({point[0], point[1], 0}), .normal={0,0,1}});
 	}
 
-	if (convex) {
-		for (size_t i=1; i<path_ref.points.size()-1; i++) {
-			elements.insert(elements.end(), {elem_offset, elem_offset+static_cast<GLuint>(i), elem_offset+static_cast<GLuint>(i+1)});
-		}
-	} else {
-		std::vector<GLuint> intermediate_verts(vertices.size());
-		for (GLuint i = 0; i<vertices.size(); i++) {
-			intermediate_verts[i]=i;
-		}
+	bool left;
 
-		bool left;
+	do {
+		left=false;
+		for (size_t x = 0; x < intermediate_verts.size(); x++) {
+			GLuint i = intermediate_verts[x];
+			GLuint i1;
+			GLuint i2;
+			size_t mid_idx;
 
-		do {
-			left=false;
-			for (size_t x = 0; x < intermediate_verts.size(); x++) {
-				GLuint i = intermediate_verts[x];
-				GLuint i1;
-				GLuint i2;
-				size_t mid_idx;
-
-				if (x+1==intermediate_verts.size()) {
-					mid_idx=0;
-					i1=intermediate_verts[0];
-					i2=intermediate_verts[1];
-				} else {
-					mid_idx=x+1;
-					i1=intermediate_verts[x+1];
-					i2=x+2==intermediate_verts.size() ? intermediate_verts[0] : intermediate_verts[x+2];
-				}
-
-				if (!(path_ref.points[i1]-path_ref.points[i]>-Epsilon && path_ref.points[i1]-path_ref.points[i]<Epsilon)) {
-					if (crossings[(size_t[]){static_cast<size_t>(i), static_cast<size_t>(i2)}]) continue;
-					elements.insert(elements.end(), {elem_offset+i, elem_offset+i1, elem_offset+i2});
-				}
-
-				left=true;
-				intermediate_verts.erase(intermediate_verts.begin()+mid_idx);
-				break;
+			if (x+1==intermediate_verts.size()) {
+				mid_idx=0;
+				i1=intermediate_verts[0];
+				i2=intermediate_verts[1];
+			} else {
+				mid_idx=x+1;
+				i1=intermediate_verts[x+1];
+				i2=x+2==intermediate_verts.size() ? intermediate_verts[0] : intermediate_verts[x+2];
 			}
 
-			amt--;
-		} while (left && amt>0);
+			if (!(path_ref.points[i1]-path_ref.points[i]>-Epsilon && path_ref.points[i1]-path_ref.points[i]<Epsilon)) {
+				if (intermediate_verts_crossing[x]) {
+					continue;
+				} else if (is_crossing(path_ref.points[i],path_ref.points[i2],std::vector<std::reference_wrapper<const Path>>{path_ref})) {
+					intermediate_verts_crossing[x]=true;
+					continue;
+				} else {
+					elements.insert(elements.end(), {elem_offset+i, elem_offset+i1, elem_offset+i2});
+				}
+			}
 
-		if (intermediate_verts.size()==3)
-			elements.insert(elements.end(), {elem_offset+intermediate_verts[0], elem_offset+intermediate_verts[1], elem_offset+intermediate_verts[2]});
-	}
+			intermediate_verts.erase(intermediate_verts.begin()+mid_idx);
 
+			if (intermediate_verts.empty()) break;
+			else left=true;
+
+			intermediate_verts_crossing[x]=false;
+			intermediate_verts_crossing[x==0 ? intermediate_verts.size()-1 : x-1]=false;
+			std::fill(intermediate_verts_crossing.begin(), intermediate_verts_crossing.end(), false);
+			intermediate_verts_crossing.erase(intermediate_verts_crossing.begin()+mid_idx);
+			break;
+		}
+	} while (left);
+
+	if (intermediate_verts.size()==3)
+		elements.insert(elements.end(), {elem_offset+intermediate_verts[0], elem_offset+intermediate_verts[1], elem_offset+intermediate_verts[2]});
+	
 	update_buffers();
 }
 
@@ -493,6 +481,25 @@ Geometry::~Geometry() {
 	if (vao==-1) return;
 	glDeleteVertexArrays(1, &vao);
 	glDeleteBuffers(2, (GLuint[]){vbo, ebo});
+}
+
+void Geometry::render_stencil() const {
+
+}
+
+void Path::merge(Path const& other) {
+	for (size_t i=0; i<points.size(); i++) {
+		for (auto other_point=other.points.begin(); other_point!=other.points.end(); other_point++) {
+			if (!is_crossing(points[i], *other_point, std::vector<std::reference_wrapper<const Path>>{*this, other})) {
+				points.insert(points.begin()+i+1, other_point, other.points.end());
+				points.insert(points.begin()+i+1+(&*other.points.end()-&*other_point), other.points.begin(), other_point+1);
+				points.insert(points.begin()+i+1+other.points.size(), points[i]); //resume original path
+				return;
+			}
+		}
+	}
+
+	points.insert(points.end(), other.points.begin(), other.points.end());
 }
 
 void Path::arc(float angle, Vec2 to, size_t divisions) {
@@ -539,18 +546,20 @@ void Path::fan(Vec2 to, size_t divisions) {
 }
 
 void Path::cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res) {
-	Vec2& start = points.back();
+	Vec2 start = points.back();
+
+	float d3 = (-start*6-p2*2+p3*2+p4*6).norm();
 
 	float d;
 	for (float x=0; x<1; x+=d) {
-		float xsq = x*x, xcb = xsq*x, ixsq=(1-x)*(1-x);
-		float w1=1-xcb, w2=3*(1-x)*xsq, w3=3*x*ixsq, w4=xcb;
+		float xsq = x*x, ixsq=(1-x)*(1-x);
+		float w1=(1-x)*ixsq, w2=3*x*ixsq, w3=3*(1-x)*xsq, w4=xsq*x;
 
 		points.emplace_back(start*w1+p2*w2+p3*w3+p4*w4);
 
 		float dw1=6*x, dw2=2*x;
-		float curvature_sq = (start*dw1+p2*dw2+p3*dw2+p4*dw1).norm_sq();
-		d = 1/(res*curvature_sq);
+		float curvature_sq = std::abs((-start*dw1-p2*dw2+p3*dw2+p4*dw1).norm_sq());
+		d = 1.0f/(res*(d3+curvature_sq));
 	}
 
 	points.push_back(p4);
@@ -625,23 +634,30 @@ SVGObject::SVGObject(Window& wind, char const* svg_data, float res) : objs() {
 
 	NSVGimage* image = nsvgParse(str_copy, "px", 96);
 
-	// Use...
 	for (NSVGshape* shape = image->shapes; shape != nullptr; shape = shape->next) {
-		std::shared_ptr<Geometry> g;
-		Vec2 center = Vec2 {shape->bounds[0]+shape->bounds[2], shape->bounds[1]+shape->bounds[3]}/2;
+		std::shared_ptr<Geometry> g(new Geometry());
+		Vec2 center {shape->bounds[0]+shape->bounds[2], shape->bounds[1]+shape->bounds[3]};
+		center/=2;
 		objs.push_back(Object<FillShader> {.wind=wind, .geo=g, .transform=Mat4(1), .shad=*fill_shader});
 		Object<FillShader>& obj = objs.back();
 		obj.transform[3][0] += center[0];
 		obj.transform[3][1] += center[1];
+		
 		obj.shader_params = Vec4 {static_cast<float>(shape->fill.color & UCHAR_MAX)/UCHAR_MAX, static_cast<float>((shape->fill.color>>8) & UCHAR_MAX)/UCHAR_MAX, static_cast<float>((shape->fill.color>>16) & UCHAR_MAX)/UCHAR_MAX, shape->opacity};
 
+		Path bigpath;
+		bigpath.closed=true;
+		bigpath.fill=true;
+
+		Path path;
 		for (NSVGpath* svgpath = shape->paths; svgpath != nullptr; svgpath = svgpath->next) {
-			Path path;
-			for (int i = 0; i < svgpath->npts-1; i += 3) {
+			path.points.clear();
+
+			for (int i = 0; i < svgpath->npts; i+=3) {
 				float* p = &svgpath->pts[i*2];
 				if (i==0) {
 					path.points.emplace_back(Vec2 {p[0], p[1]}-center);
-					i++; continue;
+					i-=2; continue;
 				}
 
 				path.cubic(Vec2 {p[0], p[1]}-center, Vec2 {p[2],p[3]}-center, Vec2 {p[4], p[5]}-center, res);
@@ -650,9 +666,9 @@ SVGObject::SVGObject(Window& wind, char const* svg_data, float res) : objs() {
 			path.closed = static_cast<bool>(svgpath->closed);
 			if (shape->opacity>0 && shape->fill.type!=NSVG_PAINT_NONE) {
 				path.fill=true;
-				g->triangulate(path);
+				bigpath.merge(path);
 			}
-			
+
 			if (shape->strokeWidth>0 && shape->stroke.type!=NSVG_PAINT_NONE) {
 				path.fill=false;
 				path.stroke_width = shape->strokeWidth;
@@ -670,9 +686,11 @@ SVGObject::SVGObject(Window& wind, char const* svg_data, float res) : objs() {
 					case NSVG_JOIN_BEVEL: path.join = Path::Join::Bevel; break;
 				}
 
-				g->triangulate(path);
+				bigpath.merge(path.stroke());
 			}
 		}
+
+		g->triangulate(bigpath);
 	}
 
 	nsvgDelete(image);
@@ -712,4 +730,3 @@ void RenderToFile::render_channel(size_t i) {
 RenderToFile::~RenderToFile() {
 	pclose(ffmpeg);
 }
-

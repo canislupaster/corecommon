@@ -157,9 +157,12 @@ size_t binomial(size_t n, size_t k) {
 	if (n<k) return 0;
 
 	size_t res=1;
-	for (size_t i = k+1; i <= n; i++) {
+	for (size_t i=n-k+1; i<=n; i++) {
 		res *= i;
-		res /= i-k;
+	}
+
+	for (size_t i=2; i<=k; i++) {
+		res /= i;
 	}
 
 	return res;

@@ -305,7 +305,7 @@ struct FillShader: public ObjectShader<Vec4> {
 #include "./include/fill.vert"
 	)), std::shared_ptr<FragShader>(new FragShader(
 #include "./include/fill.frag"
-	)), (const char*[]){"color"}) {}
+	)), (char const*[]){"color"}) {}
 };
 
 extern LazyInitialize<FillShader> fill_shader;
@@ -344,6 +344,8 @@ struct Path {
 	void arc(float angle, Vec2 to, size_t divisions);
 	void fan(Vec2 to, size_t divisions);
 	void cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res);
+	//merges other path into this path
+	void merge(Path const& other);
 	//expands path to stroke_width, sets fill=true and stroke_width=0
 	Path stroke() const;
 
@@ -365,10 +367,12 @@ struct Geometry {
 	explicit Geometry(Path const& path);
 	void init(bool update_buf);
 	void update_buffers();
-	void triangulate(Path const& path, unsigned amt=std::numeric_limits<unsigned>::max());
+	void triangulate(Path const& path);
 	~Geometry();
 
 	void render() const;
+	//xor stencil buffer
+	void render_stencil() const;
 };
 
 class Window {
@@ -423,12 +427,12 @@ class Window {
 
 	Options& opts;
 
-	LateInitialize<TexShader<>> passthrough;
-	LateInitialize<Geometry> full_rect;
+	std::optional<TexShader<Mat3>> passthrough;
+	std::optional<Geometry> full_rect;
 	//LateInitialize<Geometry> full_rect;
 
 	GLuint tex_fbo;
-	LateInitialize<UniformBuffer<Mat4, Mat4>> object_ubo;
+	std::optional<UniformBuffer<Mat4, Mat4>> object_ubo;
 	Layer* in_use;
 
 	bool swapped;
@@ -505,7 +509,7 @@ struct Layer {
 template<class TexShader>
 void Texture::render(RenderTarget target, TexShader const& shad, typename TexShader::Tuple const& params) const {
 	std::visit([](auto x){x.get().use();}, target);
-	shad.use(*this, std::tuple());
+	shad.use(*this, params);
 	wind.full_rect->render();
 }
 

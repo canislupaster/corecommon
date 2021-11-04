@@ -35,8 +35,8 @@ endforeach()
 add_executable(rawstringifier rawstringifier.cpp)
 
 if (graphics)
-    add_library(graphics ${CMAKE_CURRENT_SOURCE_DIR}/graphics/graphics.cpp)
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/graphics)
+    add_library(graphics graphics/graphics.cpp graphics/nanosvg.c)
+    include_directories(graphics)
     add_dependencies(graphics corecommon)
 
     find_package(OpenGL REQUIRED)
