@@ -8,8 +8,8 @@ find_package(PkgConfig REQUIRED)
 file(GLOB SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/database.hpp)
 
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-#set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 
 add_library(corecommon ${SRC})
 
@@ -26,10 +26,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 foreach(TEST ${TESTS})
 	get_filename_component(NAME ${TEST} NAME_WLE)
 	add_executable(${NAME} ${TEST})
-	add_test(${NAME} ${NAME})
 
 	add_dependencies(${NAME} corecommon)
 	target_link_libraries(${NAME} corecommon)
+
+    add_test(${NAME} ${NAME})
 endforeach()
 
 add_executable(rawstringifier rawstringifier.cpp)

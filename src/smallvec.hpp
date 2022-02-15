@@ -18,17 +18,24 @@ class SmallVecAllocator {
 	std::array<T, MinCapacity> arr;
 	Alloc<T> alloc;
 
-	SmallVecAllocator() {}
 	pointer allocate(size_type n) {
 		return n <= MinCapacity ? arr.data() : alloc.allocate(n);
 	}
 
 	void deallocate(pointer p, size_type n) {
-		if (p!=arr.data()) {
-			alloc.deallocate(p, n);
-		}
+		if (p!=arr.data()) alloc.deallocate(p, n);
 	}
 };
+
+template <class T, class U>
+bool operator==(SmallVecAllocator<T> const& a, SmallVecAllocator<U> const& b) noexcept {
+	return a.arr.data() == b.arr.data();
+}
+
+template <class T, class U>
+bool operator!=(SmallVecAllocator<T> const& a, SmallVecAllocator<U> const& b) noexcept {
+	return a.arr.data() != b.arr.data();
+}
 
 template<class T, size_t MinCapacity=1, template<class X> class Alloc=std::allocator>
 using SmallVec = std::vector<T, SmallVecAllocator<T, MinCapacity, Alloc>>;

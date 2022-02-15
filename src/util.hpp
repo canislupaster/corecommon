@@ -7,6 +7,24 @@
 #include <vector>
 #include <optional>
 
+template<class T>
+struct ConstReverseIterator {
+	T const& t;
+	using const_iterator = typename T::const_reverse_iterator;
+	ConstReverseIterator(T const& t): t(t) {}
+	typename T::const_reverse_iterator begin() const { return t.rbegin(); }
+	typename T::const_reverse_iterator end() const { return t.rend(); }
+};
+
+template<class T>
+struct ReverseIterator {
+	T& t;
+	using iterator = typename T::reverse_iterator;
+	ReverseIterator(T& t): t(t) {}
+	typename T::reverse_iterator begin() { return t.rbegin(); }
+	typename T::reverse_iterator end() { return t.rend(); }
+};
+
 template<class Arg, class ...Args>
 struct VarArgList {
 	static const bool is_last=true;
