@@ -39,4 +39,6 @@ _deps
 
 # me build dir
 build
+# me other build dir
+cmake-build-release
 .idea/

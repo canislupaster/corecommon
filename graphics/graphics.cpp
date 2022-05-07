@@ -1,6 +1,8 @@
 #include "graphics.hpp"
 #include "arrayset.hpp"
 
+#include <algorithm>
+
 LazyInitialize<FillShader> fill_shader([](){return FillShader();});
 
 void sdl_reporterr() {
@@ -382,25 +384,29 @@ bool is_crossing(Vec2 const& p1, Vec2 const& p2, std::vector<std::reference_wrap
 	for (auto other: others) {
 		Path const& other_ref = other.get();
 
-		for (size_t i=0; i<other_ref.points.size(); i++) {
-			Vec2 off2 = other_ref.points[i == other_ref.points.size()-1 ? 0 : i+1] - other_ref.points[i];
-			if (off2>-Epsilon && off2<Epsilon) continue;
+		for (size_t part=0; part<other_ref.parts.size(); part++) {
+			size_t lim = part+1==other_ref.parts.size() ? other_ref.points.size() : other_ref.parts[part+1];
 
-			std::optional<Vec2::Intersection> crossing = Vec2::intersect(p1, off, other_ref.points[i], off2);
+			for (size_t i=other_ref.parts[part]; i<lim; i++) {
+				Vec2 off2 = other_ref.points[i+1==lim ? other_ref.parts[part] : i+1] - other_ref.points[i];
+				if (off2.abs()<Epsilon) continue;
 
-			if (crossing && crossing->in_segment_no_endpoints()) {
-				return true;
-			} else if (crossing && crossing->c1>0 && crossing->c2==0) {
-				Vec2 off_before = other_ref.points[i==0 ? other_ref.points.size()-1 : i-1]-other_ref.points[i];
-				for (size_t i_minus=2; off_before>-Epsilon && off_before<Epsilon && i_minus<other_ref.points.size(); i_minus++)
-					 off_before = other_ref.points[i_minus>=i ? other_ref.points.size()-i_minus+i : i-i_minus] - other_ref.points[i];
+				std::optional<Vec2::Intersection> crossing = Vec2::intersect(p1, off, other_ref.points[i], off2);
 
-				if (std::signbit(off_before.determinant(off))!=std::signbit(off2.determinant(off))) {
-					 if (crossing->c1<1) return true;
+				if (crossing && crossing->in_segment_no_endpoints()) {
+					 return true;
+				} else if (crossing && crossing->c1>0 && crossing->c2==0) {
+					 Vec2 off_before = other_ref.points[i==other_ref.parts[part] ? lim : i-1]-other_ref.points[i];
+					 for (size_t i_minus=2; off_before.abs()<Epsilon && i_minus<other_ref.points.size(); i_minus++)
+							 off_before = other_ref.points[i] - other_ref.points[i_minus+other_ref.parts[part]>=i ? lim-i_minus+i : i-i_minus];
+
+					 if (std::signbit(off_before.determinant(off))!=std::signbit(off2.determinant(off))) {
+							 if (crossing->c1<1) return true;
+							 num_crossings++;
+					 }
+				} else if (crossing && crossing->c1>0 && crossing->c2>0 && crossing->c2<1) {
 					 num_crossings++;
 				}
-			} else if (crossing && crossing->c1>0 && crossing->c2>0 && crossing->c2<1) {
-				num_crossings++;
 			}
 		}
 	}
@@ -408,72 +414,240 @@ bool is_crossing(Vec2 const& p1, Vec2 const& p2, std::vector<std::reference_wrap
 	return num_crossings%2==0;
 }
 
+struct MonotonePolygon {
+	std::vector<GLuint> left;
+	std::vector<GLuint> right;
+	std::unique_ptr<MonotonePolygon> merging;
+};
+
 void Geometry::triangulate(Path const& path) {
 	Path stroked;
 	if (!path.fill) stroked = path.stroke();
 	Path const& path_ref = path.fill ? path : stroked;
+	std::vector<Vec2> const& p = path_ref.points;
 
-	std::vector<GLuint> intermediate_verts(path_ref.points.size());
-	for (GLuint i = 0; i<path_ref.points.size(); i++) {
-		intermediate_verts[i]=i;
+	std::vector<GLuint> sorted;
+	sorted.reserve(p.size());
+	for (GLuint i = 0; i<p.size(); i++) {
+		if (std::isnan(p[i][0]) || std::isnan(p[i][1])) continue;
+		sorted.push_back(i);
 	}
 
-	std::vector<bool> intermediate_verts_crossing(path_ref.points.size(), false);
+	std::sort(sorted.begin(), sorted.end(), [&](GLuint const& i1, GLuint const& i2){
+		return (p[i1][1] > p[i2][1])
+			|| (p[i1][1]==p[i2][1] && p[i1][0] > p[i2][0]);
+	});
 
 	auto elem_offset = static_cast<GLuint>(vertices.size());
-	vertices.reserve(vertices.size()+path_ref.points.size());
+	vertices.reserve(vertices.size()+p.size());
 
-	for (Vec2 const& point: path_ref.points) {
+	for (Vec2 const& point: p) {
 		vertices.push_back(Vertex {.pos=Vec3({point[0], point[1], 0}), .normal={0,0,1}});
 	}
 
-	bool left;
+	std::vector<std::pair<GLuint, GLuint>> sweep;
+	std::vector<MonotonePolygon> stack;
 
-	do {
-		left=false;
-		for (size_t x = 0; x < intermediate_verts.size(); x++) {
-			GLuint i = intermediate_verts[x];
-			GLuint i1;
-			GLuint i2;
-			size_t mid_idx;
+	//so i can copy-paste into geogebra 😜
+	std::cout<<std::endl;
+	for (Vec2 const& pt: p) {
+		std::cout << "(" << pt[0] << ", " << pt[1] << "), ";
+	}
+	std::cout<<std::endl;
 
-			if (x+1==intermediate_verts.size()) {
-				mid_idx=0;
-				i1=intermediate_verts[0];
-				i2=intermediate_verts[1];
-			} else {
-				mid_idx=x+1;
-				i1=intermediate_verts[x+1];
-				i2=x+2==intermediate_verts.size() ? intermediate_verts[0] : intermediate_verts[x+2];
-			}
+	auto triangulate_monotone = [&](MonotonePolygon& poly){
+		auto iter = poly.left.rbegin();
+		auto other_iter = poly.right.rbegin();
+		std::vector<GLuint>* chain = &poly.left;
+		std::vector<GLuint>* other_chain = &poly.right;
+		bool iter_left=true;
+		bool switched=false;
 
-			if (!(path_ref.points[i1]-path_ref.points[i]>-Epsilon && path_ref.points[i1]-path_ref.points[i]<Epsilon)) {
-				if (intermediate_verts_crossing[x]) {
-					continue;
-				} else if (is_crossing(path_ref.points[i],path_ref.points[i2],std::vector<std::reference_wrapper<const Path>>{path_ref})) {
-					intermediate_verts_crossing[x]=true;
-					continue;
-				} else {
-					elements.insert(elements.end(), {elem_offset+i, elem_offset+i1, elem_offset+i2});
+		while (iter!=chain->rend() || other_iter!=other_chain->rend()) {
+			//...
+			while (iter!=chain->rend() &&
+					((other_iter==other_chain->rend()) || (p[*iter][1]<p[*other_iter][1]
+							|| (p[*iter][1]==p[*other_iter][1] && p[*iter][0]<=p[*other_iter][0])))) {
+
+				if (iter-chain->rbegin()>1 || (!switched && iter!=chain->rbegin())) {
+					auto iter_cpy = iter-1;
+					while (iter_cpy!=chain->rbegin()) {
+						float d = (p[*iter_cpy]-p[*(iter_cpy-1)]).determinant(p[*iter]-p[*(iter_cpy-1)]);
+
+						//not worth adding lmao why tf u give me such bad polys
+//						if (std::abs(d)<Epsilon) {
+//							long diff = iter-iter_cpy;
+//							iter_cpy = std::make_reverse_iterator(chain->erase(iter_cpy.base()-1))-1;
+//							iter = iter_cpy+diff;
+//						} else
+						if ((iter_left && d<0) || (!iter_left && d>0)) {
+							elements.insert(elements.end(), {elem_offset+*iter, elem_offset+*iter_cpy, elem_offset+*(iter_cpy-1)});
+							long diff = iter-iter_cpy;
+							iter_cpy = std::make_reverse_iterator(chain->erase(iter_cpy.base()-1))-1;
+							iter = iter_cpy+diff;
+						} else {
+							break;
+						}
+					}
+
+					if (iter_cpy==chain->rbegin()) {
+						float d = (p[*(iter_cpy+1)]-p[*(iter_cpy)]).determinant(p[*iter]-p[other_chain->back()]);
+						if ((iter_left && d<0) || (!iter_left && d>0)) {
+							elements.insert(elements.end(), {elem_offset+chain->back(), elem_offset+*iter, elem_offset+other_chain->back()});
+							chain->pop_back();
+							iter = chain->rbegin();
+						}
+					}
+				} else if (switched) {
+					//clunky but needed conditionals (i thought about this shit for an hour or something, don't try it again!) for handling start/end conditions when the vertex that should be handled next is not part of a triangle here
+					if (*iter!=chain->back() && other_chain->back()!=*iter)
+						elements.insert(elements.end(), {elem_offset+chain->back(), elem_offset+*iter, elem_offset+other_chain->back()});
+
+					for (auto other_iter_cpy=other_chain->rbegin()+1; other_iter_cpy<other_iter && other_iter_cpy<other_chain->rend()-1; other_iter_cpy++) {
+						elements.insert(elements.end(), {elem_offset+*other_iter_cpy, elem_offset+*iter, elem_offset+*(other_iter_cpy-1)});
+					}
+
+					if (other_iter>other_chain->rbegin()+1) {
+						other_chain->erase(other_iter.base()+1, other_chain->end());
+						other_iter = other_chain->rbegin()+1;
+					}
+
+					if (*iter!=chain->back()) chain->pop_back();
+					iter = chain->rbegin();
+					switched=false;
 				}
+
+				iter++;
 			}
 
-			intermediate_verts.erase(intermediate_verts.begin()+mid_idx);
-
-			if (intermediate_verts.empty()) break;
-			else left=true;
-
-			intermediate_verts_crossing[x]=false;
-			intermediate_verts_crossing[x==0 ? intermediate_verts.size()-1 : x-1]=false;
-			std::fill(intermediate_verts_crossing.begin(), intermediate_verts_crossing.end(), false);
-			intermediate_verts_crossing.erase(intermediate_verts_crossing.begin()+mid_idx);
-			break;
+			std::swap(other_iter, iter);
+			std::swap(chain, other_chain);
+			iter_left = !iter_left;
+			switched=true;
 		}
-	} while (left);
+	};
 
-	if (intermediate_verts.size()==3)
-		elements.insert(elements.end(), {elem_offset+intermediate_verts[0], elem_offset+intermediate_verts[1], elem_offset+intermediate_verts[2]});
-	
+	for (size_t i=0; i<sorted.size(); i++) {
+		auto part = path_ref.part(sorted[i]);
+		std::array<GLuint, 2> adj = {path_ref.prev(part, sorted[i]), path_ref.next(part, sorted[i])};
+
+		if ((p[adj[0]]-p[sorted[i]]).abs()<Epsilon) continue;
+
+		std::vector<std::pair<GLuint, GLuint>>::iterator edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == sorted[i];});
+
+		while ((p[adj[1]]-p[sorted[i]]).abs()<Epsilon) {
+			auto new_edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == adj[1];});
+			if (new_edge<edge) edge=new_edge;
+			adj[1]=path_ref.next(part, adj[1]);
+		}
+
+		if (adj[1]==adj[0]) continue; //sanity check, in case not a triangle i guess
+
+		bool l1 = p[adj[0]][1] < p[sorted[i]][1] || (p[adj[0]][1]==p[sorted[i]][1] && p[adj[0]][0] < p[sorted[i]][0]);
+		bool l2 = p[adj[1]][1] < p[sorted[i]][1] || (p[adj[1]][1]==p[sorted[i]][1] && p[adj[1]][0] < p[sorted[i]][0]);
+
+		auto merge_poly = [&](std::vector<MonotonePolygon>::iterator poly){
+			if (adj[0]==poly->left.back() || adj[1]==poly->left.back()) {
+				poly->left.push_back(sorted[i]);
+				//poly->right.push_back(sorted[i]);
+				triangulate_monotone(*poly);
+
+				MonotonePolygon* merging = poly->merging.release();
+				merging->left.push_back(sorted[i]);
+				auto ins = stack.insert(stack.erase(poly), std::move(*merging));
+				delete merging;
+
+				return ins;
+			} else if (adj[0]==poly->merging->right.back() || adj[1]==poly->merging->right.back()) {
+				poly->merging->right.push_back(sorted[i]);
+				poly->right.push_back(sorted[i]);
+
+				triangulate_monotone(*poly->merging);
+
+				poly->merging.reset();
+			}
+
+			return poly;
+		};
+
+		if (edge==sweep.end()) {
+			auto sweep_pos = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x) {
+				float big_dy = p[x.first][1]-p[x.second][1];
+				float dy = big_dy==0 ? 0 : (p[x.first][1]-p[sorted[i]][1])/big_dy;
+				return p[sorted[i]][0]>=p[x.first][0] + dy*(p[x.second][0]-p[x.first][0]);
+			});
+
+			bool swap = p[adj[1]][1]==p[adj[0]][1] ? p[adj[0]][0] < p[adj[1]][0] : (p[adj[0]]-p[sorted[i]]).determinant(p[adj[1]]-p[sorted[i]])>0;
+
+			//split/new
+			if ((sweep_pos-sweep.begin()) % 2 == 1) {
+				auto poly = stack.begin() + (sweep_pos-sweep.begin())/2;
+
+				if (poly->merging) {
+					poly->right.push_back(sorted[i]);
+					poly->merging->left.push_back(sorted[i]);
+
+					MonotonePolygon* merging = poly->merging.release();
+					stack.insert(poly+1, std::move(*merging));
+					delete merging;
+				} else if ((p[poly->left.back()][1] < p[poly->right.back()][1])
+						|| (p[poly->left.back()][1]==p[poly->right.back()][1] && p[poly->left.back()][0] < p[poly->right.back()][0])) {
+					auto new_poly = MonotonePolygon {.left={poly->left.back()}, .right={poly->left.back(), sorted[i]}};
+					poly->left.push_back(sorted[i]);
+					stack.insert(poly, std::move(new_poly));
+				} else {
+					auto new_poly = MonotonePolygon {.left={poly->right.back(), sorted[i]}, .right={poly->right.back()}};
+					poly->right.push_back(sorted[i]);
+					stack.insert(poly+1, std::move(new_poly));
+				}
+			} else {
+				stack.emplace(stack.begin()+(sweep_pos-sweep.begin())/2, MonotonePolygon {.left={sorted[i]}, .right={sorted[i]}});
+			}
+
+			auto first = sweep.emplace(sweep_pos, sorted[i], swap ? adj[1] : adj[0]);
+			sweep.emplace(first+1, sorted[i], swap ? adj[0] : adj[1]);
+		} else if (l1 || l2) {
+			auto poly = stack.begin() + (edge-sweep.begin())/2;
+			if (poly->merging) {
+				merge_poly(poly);
+			} else if ((edge-sweep.begin()) % 2 == 1) {
+				poly->right.push_back(sorted[i]);
+			} else if ((edge-sweep.begin()) % 2 == 0) {
+				poly->left.push_back(sorted[i]);
+			}
+
+			if (l1) *edge = std::pair(sorted[i], adj[0]);
+			else *edge = std::pair(sorted[i], adj[1]);
+		} else {
+			auto poly = stack.begin() + (edge-sweep.begin())/2;
+
+			if ((edge-sweep.begin()) % 2 == 1) {
+				if (poly->merging) poly = merge_poly(poly);
+				else poly->right.push_back(sorted[i]);
+
+				auto poly2 = poly+1 == stack.end() ? poly-1 : poly+1;
+				if (poly2->merging) poly2 = merge_poly(poly2);
+				else poly2->left.push_back(sorted[i]);
+
+				poly->merging = std::unique_ptr<MonotonePolygon>(new MonotonePolygon(std::move(*poly2)));
+				stack.erase(poly2);
+			} else {
+				poly->left.push_back(sorted[i]);
+
+				if (poly->merging) {
+					poly->merging->left.push_back(sorted[i]);
+					//poly->merging->right.push_back(sorted[i]);
+					triangulate_monotone(*poly->merging);
+				}
+
+				triangulate_monotone(*poly);
+				stack.erase(poly);
+			}
+
+			sweep.erase(sweep.erase(edge));
+		}
+	}
+
 	update_buffers();
 }
 
@@ -488,14 +662,10 @@ void Geometry::render_stencil() const {
 }
 
 void Path::merge(Path const& other) {
-	for (size_t i=0; i<points.size(); i++) {
-		for (auto other_point=other.points.begin(); other_point!=other.points.end(); other_point++) {
-			if (!is_crossing(points[i], *other_point, std::vector<std::reference_wrapper<const Path>>{*this, other})) {
-				points.insert(points.begin()+i+1, other_point, other.points.end());
-				points.insert(points.begin()+i+1+(&*other.points.end()-&*other_point), other.points.begin(), other_point+1);
-				points.insert(points.begin()+i+1+other.points.size(), points[i]); //resume original path
-				return;
-			}
+	if (!points.empty()) {
+		auto part = parts.insert(parts.end(), other.parts.begin(), other.parts.end());
+		for (;part!=parts.end(); part++) {
+			*part += points.size();
 		}
 	}
 
@@ -521,27 +691,27 @@ void Path::arc(float angle, Vec2 to, size_t divisions) {
 	}
 }
 
-void Path::fan(Vec2 to, size_t divisions) {
-	Vec2 offset = to-points.back();
-	Vec2 prev_offset = *(points.end() - 2) - points.back();
+void Path::fan(Vec2 to, Vec2 center, size_t divisions) {
+	Vec2 offset = to-center;
+	Vec2 prev_offset = points.back()-center;
 
 	float onorm = offset.norm();
-	float norm_factor = onorm*prev_offset.norm();
-	float cos = prev_offset.dot(offset)/norm_factor;
-	float sin = prev_offset.determinant(offset)/norm_factor;
+	float pnorm = prev_offset.norm();
+	float dot = prev_offset.dot(offset)/pnorm;
+	float cos = dot/onorm;
+	float sin = offset.determinant(prev_offset)/(onorm*pnorm);
 
-	float fan_sin = 2*(offset - prev_offset*cos).norm();
-	float r = onorm/fan_sin;
-	float angle = std::asin(fan_sin);
+	Vec2 perp = (offset - prev_offset*dot/pnorm)/sin;
 
-	Vec2 center_offset = (sin>0 ? offset.perpendicular(0,1) : offset.perpendicular(1,0))*r;
-	Vec2 center = points.back() - center_offset;
+	float angle = std::asin(sin);
+	if (sin<0 != cos<0) angle = M_PI - angle;
+
+	Vec2 center_offset {1,0};
 
 	Vec2 rot_mat {std::cosf(angle/static_cast<float>(divisions)), std::sinf(angle/static_cast<float>(divisions))};
 	for (size_t i=0; i<divisions; i++) {
-		center_offset = center_offset.rotate_by(rot_mat);
-		center_offset = center_offset.normalize(r);
-		points.emplace_back(center + center_offset);
+		center_offset = center_offset.rotate_by(rot_mat).normalize(1);
+		points.emplace_back(center + prev_offset*center_offset[0] + perp*center_offset[1]);
 	}
 }
 
@@ -557,8 +727,8 @@ void Path::cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res) {
 
 		points.emplace_back(start*w1+p2*w2+p3*w3+p4*w4);
 
-		float dw1=6*x, dw2=2*x;
-		float curvature_sq = std::abs((-start*dw1-p2*dw2+p3*dw2+p4*dw1).norm_sq());
+		float dw1=6-6*x, dw2=18*x-12, dw3=6-18*x, dw4=6*x;
+		float curvature_sq = (start*dw1+p2*dw2+p3*dw3+p4*dw4).norm_sq();
 		d = 1.0f/(res*(d3+curvature_sq));
 	}
 
@@ -568,55 +738,68 @@ void Path::cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res) {
 void Path::stroke_side(Path& expanded, bool cw) const {
 	Vec2 off;
 
-	for (size_t i = cw ? 0 : points.size()-1; cw ? i<points.size() : i!=-1; cw ? i++ : i--) {
-		if ((i>0 && i<points.size()-1) || closed) {
-			Vec2 diff = (points[i]-points[i==0 ? points.size()-1 : i-1]);
-			for (size_t i_minus=2; diff>-Epsilon && diff<Epsilon && i_minus<points.size(); i_minus++)
-				diff = points[i] - points[i_minus>=i ? points.size()-i_minus+i : i-i_minus];
-			diff=diff.normalize(1);
+	for (size_t part=0; part<parts.size(); part++) {
+		GLuint lim = part+1==parts.size() ? points.size() : parts[part + 1];
+		GLuint n = lim-parts[part];
+		if (n==1) continue;
 
-			Vec2 diff2 = points[i+1==points.size() ? 0 : i+1] - points[i];
-			for (size_t i_plus=2; diff2>-Epsilon && diff2<Epsilon && i_plus<points.size(); i_plus++)
-				diff2 = points[(i+i_plus)%points.size()] - points[i];
-			diff2=diff2.normalize(1);
+		for (GLuint i = cw ? parts[part] : lim-1; cw ? i< lim : i!=parts[part]-1; cw ? i++ : i--) {
+			if ((i>parts[part] && i<lim-1) || closed) {
+				Vec2 diff = (points[i]-points[i==parts[part] ? lim-1 : i-1]);
+				for (GLuint i_minus=2; diff>-Epsilon && diff<Epsilon && i_minus<n; i_minus++)
+					 diff = points[i] - points[i_minus+parts[part]>=i ? lim-i_minus+i : i-i_minus];
+				diff=diff.normalize(1);
 
-			//> you could have used the half angle formula instead!
-			// - me
+				Vec2 diff2 = points[i+1==lim ? parts[part] : i+1] - points[i];
+				for (GLuint i_plus=2; diff2>-Epsilon && diff2<Epsilon && i_plus<n; i_plus++)
+					 diff2 = points[parts[part] + ((i+i_plus-parts[part])%n)] - points[i];
+				diff2=diff2.normalize(1);
 
-			Vec2 avg = (diff2-diff).normalize(1);
-			float slope = diff.determinant(avg);
-			float off_det_edge;
+				Vec2 avg = (diff2-diff).normalize(1);
+				float slope = diff.determinant(avg);
 
-			if (i==0 && cw) off_det_edge = 1;
-			else if (i==points.size()-1 && !cw) off_det_edge = -1;
-			else off_det_edge = diff.determinant(off);
+				bool off_sign = cw ? slope<=0 : slope>=0;
 
-			bool off_sign = std::signbit(slope)!=std::signbit(off_det_edge);
-			if (join==Join::Round && off_sign) {
-				expanded.points.emplace_back(points[i] + diff.perpendicular(cw, !cw)*stroke_width);
-				off = diff2.perpendicular(cw, !cw)*stroke_width;
-				expanded.fan(points[i] + off, 15);
-				expanded.points.emplace_back(points[i] + off);
-			} else if ((join==Join::Bevel || std::abs(1/slope)>miter_limit) && off_sign) {
-				expanded.points.emplace_back(points[i] + diff.perpendicular(cw, !cw)*stroke_width);
-				off = diff2.perpendicular(cw, !cw)*stroke_width;
-				expanded.points.emplace_back(points[i] + off);
+				if (join==Join::Round && off_sign) {
+					expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
+					off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
+					expanded.fan(points[i] + off, points[i], 15);
+					expanded.points.emplace_back(points[i] + off);
+				} else if ((join==Join::Bevel || std::abs(1/slope)>miter_limit) && off_sign) {
+					expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
+					off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
+					expanded.points.emplace_back(points[i] + off);
+				} else {
+					off = avg*(off_sign ? -std::abs(stroke_width/slope) : std::abs(stroke_width/slope));
+					expanded.points.emplace_back(points[i] + off);
+				}
+			} else if (i==parts[part]) {
+				if (cap==Cap::Round && !cw) continue;
+
+				Vec2 diff = points[i+1]-points[i];
+				off = diff.perpendicular(cw, !cw).normalize(stroke_width);
+				if (cap==Cap::Square) off -= diff.normalize(stroke_width);
+
+				if (cap==Cap::Round) {
+					expanded.points.emplace_back(points[i]-off);
+					expanded.arc(M_PI, points[i] + off, 15);
+				} else {
+					expanded.points.emplace_back(points[i] + off);
+				}
 			} else {
-				off = avg*(off_sign ? -std::abs(stroke_width/slope) : std::abs(stroke_width/slope));
-				expanded.points.emplace_back(points[i] + off);
+				if (cap==Cap::Round && !cw) continue;
+
+				Vec2 diff = points[i]-points[i-1];
+				off = diff.perpendicular(cw, !cw).normalize(stroke_width);
+				if (cap==Cap::Square) off += diff.normalize(stroke_width);
+
+				if (cap==Cap::Round) {
+					expanded.points.emplace_back(points[i]+off);
+					expanded.arc(M_PI, points[i]-off, 15);
+				} else {
+					expanded.points.emplace_back(points[i] + off);
+				}
 			}
-		} else if (i==0) {
-			Vec2 diff = points[i+1]-points[i];
-			off = (cap==Cap::Square ? -diff.normalize(stroke_width) : Vec2(0.0f)) + diff.perpendicular(cw, !cw).normalize(stroke_width);
-
-			if (cap==Cap::Round) expanded.arc(M_PI, points[i] + off, 15);
-			else expanded.points.emplace_back(points[i] + off);
-		} else {
-			Vec2 diff = points[i]-points[i-1];
-			off = (cap==Cap::Square ? diff.normalize(stroke_width) : Vec2(0.0f)) + diff.perpendicular(cw, !cw).normalize(stroke_width);
-
-			if (cap==Cap::Round) expanded.arc(M_PI, points[i] + off, 25);
-			else expanded.points.emplace_back(points[i] + off);
 		}
 	}
 }
@@ -624,8 +807,26 @@ void Path::stroke_side(Path& expanded, bool cw) const {
 Path Path::stroke() const {
 	Path expanded = {.points=std::vector<Vec2>(), .fill=true, .closed=true, .stroke_width=0};
 	stroke_side(expanded, true);
+	if (closed) expanded.parts.push_back(expanded.points.size());
 	stroke_side(expanded, false);
 	return expanded;
+}
+
+//really dumb stupid head functions which don't even save me any tpying!??
+std::vector<GLuint>::const_iterator Path::part(GLuint i) const {
+	auto part = std::adjacent_find(parts.begin(), parts.end(), [=](size_t part1, size_t part2){return part1 <= i && i < part2;});
+	if (part==parts.end()) part--;
+	return part;
+}
+
+GLuint Path::next(std::vector<GLuint>::const_iterator part, GLuint i) const {
+	if (i+1 == (part==parts.end()-1 ? points.size() : *(part+1))) return *part;
+	else return i+1;
+}
+
+GLuint Path::prev(std::vector<GLuint>::const_iterator part, GLuint i) const {
+	if (i == *part) return part==parts.end()-1 ? points.size()-1 : *(part+1)-1;
+	else return i-1;
 }
 
 SVGObject::SVGObject(Window& wind, char const* svg_data, float res) : objs() {

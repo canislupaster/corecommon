@@ -15,9 +15,18 @@ static constexpr float Epsilon = std::numeric_limits<float>::epsilon()*64;
 template<size_t num_rows, size_t num_cols>
 struct Matrix;
 
-template<size_t n>
+template<size_t n, class RetTypeParam=void>
 struct Vector {
+	//🤙 dear god
+	using RetType = std::conditional_t<std::is_void<RetTypeParam>::value, Vector, RetTypeParam>;
+	
 	std::array<float, n> v;
+
+	template<class OtherRetType>
+	explicit Vector(Vector<n, OtherRetType>&& x) : v(std::move(x.v)) {}
+
+	template<class OtherRetType>
+	explicit Vector(Vector<n, OtherRetType> const& x) : v(x.v) {}
 
 	Vector(): v{0} {}
 	Vector(float x) {
@@ -59,9 +68,9 @@ struct Vector {
 		return this->dot(*this);
 	}
 
-	//perpendicular, clockwise of original vector, swap arguments for negative determinant
-	Vector<n> perpendicular(size_t i, size_t j) const {
-		Vector<n> vec(0.0f);
+	//perpendicular, clockwise of original vector, swap arguments for ccw
+	RetType perpendicular(size_t i, size_t j) const {
+		RetType vec(0.0f);
 		vec[i] = v[j];
 		vec[j] = -v[i];
 		return vec;
@@ -69,7 +78,7 @@ struct Vector {
 
 	struct Intersection {
 		float c1, c2; //intersection located at x1+off1*c1, x2+off2*c2
-		Vector pos;
+		RetType pos;
 
 		bool in_segment() {
 			return c1>=0 && c1<=1 && c2>=0 && c2<=1;
@@ -80,7 +89,7 @@ struct Vector {
 		}
 	};
 
-	static std::optional<Intersection> intersect(Vector<n> const& x1, Vector<n> const& off1, Vector<n> const& x2, Vector<n> const& off2) {
+	static std::optional<Intersection> intersect(RetType const& x1, RetType const& off1, RetType const& x2, RetType const& off2) {
 		for (size_t i = 0; i < n; i++) {
 			if (x1[i]==x2[i]) continue;
 
@@ -110,75 +119,86 @@ struct Vector {
 		return std::optional(Intersection {.pos=x1, .c1=0, .c2=0});
 	}
 
-	Vector& operator*=(Vector const& other) {
+	RetType& operator*=(Vector const& other) {
 		for (size_t i=0; i<n; i++) v[i] = v[i]*other[i];
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector& operator*=(float scale) {
+	RetType& operator*=(float scale) {
 		for (size_t i=0; i<n; i++) v[i] *= scale;
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector& operator/=(float scale) {
+	RetType& operator/=(float scale) {
 		for (size_t i=0; i<n; i++) v[i] /= scale;
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector& operator+=(Vector const& other) {
+	RetType& operator+=(Vector const& other) {
 		for (size_t i=0; i<n; i++) v[i] += other[i];
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector& operator-=(Vector const& other) {
+	RetType& operator-=(Vector const& other) {
 		for (size_t i=0; i<n; i++) v[i] -= other[i];
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector& operator/=(Vector const& other) {
+	RetType& operator/=(Vector const& other) {
 		for (size_t i=0; i<n; i++) v[i] /= other[i];
-		return *this;
+		return static_cast<RetType&>(*this);
 	}
 
-	Vector operator*(Vector const& other) const {
-		Vector<n> out = *this;
+	RetType& abs() {
+		for (size_t i=0; i<n; i++) v[i]=std::abs(v[i]);
+		return static_cast<RetType&>(*this);
+	}
+
+	RetType operator*(Vector const& other) const {
+		RetType out = *this;
 		out *= other;
 		return out;
 	}
 
-	Vector operator*(float scale) const {
-		Vector<n> out = *this;
+	RetType operator*(float scale) const {
+		RetType out = *this;
 		out *= scale;
 		return out;
 	}
 
-	Vector operator/=(float scale) const {
-		Vector<n> out = *this;
+	RetType operator/=(float scale) const {
+		RetType out = *this;
 		out *= scale;
 		return out;
 	}
 
-	Vector operator+(Vector const& other) const {
-		Vector<n> out = *this;
+	RetType operator+(Vector const& other) const {
+		RetType out = *this;
 		out += other;
 		return out;
 	}
 
-	Vector operator-(Vector const& other) const {
-		Vector<n> out = *this;
+	RetType operator-(Vector const& other) const {
+		RetType out = *this;
 		out -= other;
 		return out;
 	}
 
-	Vector operator/(Vector const& other) const {
-		Vector<n> out = *this;
+	RetType operator/(Vector const& other) const {
+		RetType out = *this;
 		out /= other;
 		return out;
 	}
 
-	Vector operator-() const {
-		Vector<n> out;
+	RetType operator-() const {
+		RetType out;
 		for (size_t i=0; i<n; i++) out[i] = -v[i];
+		return out;
+	}
+
+	RetType abs() const {
+		RetType out = *this;
+		out.abs();
 		return out;
 	}
 
@@ -223,7 +243,7 @@ struct Vector {
 		return v!=other.v;
 	}
 
-	Vector<n> normalize(float length) const {
+	RetType normalize(float length) const {
 		return *this*(length/norm());
 	}
 
@@ -244,15 +264,18 @@ struct Vector {
 	}
 };
 
-struct Vec2: Vector<2> {
+struct Vec2: Vector<2, Vec2> {
 	//implicit conversions 🤡
-	using Vector<2>::Vector;
-	Vec2(Vector<2> const& vec2): Vector<2>(vec2) {}
-	Vec2(Vector<2>&& vec2): Vector<2>(vec2) {}
+	using Vector<2, Vec2>::Vector;
+	Vec2(Vector<2, Vec2> const& vec2): Vector<2, Vec2>(vec2) {}
+	Vec2(Vector<2, Vec2>&& vec2): Vector<2, Vec2>(vec2) {}
+	Vec2(Vector<2> const& vec2): Vector<2, Vec2>(vec2) {}
+	Vec2(Vector<2>&& vec2): Vector<2, Vec2>(vec2) {}
 
 	float determinant(Vec2 const& other) const;
 	Vec2 rotate_by(Vec2 const& other);
 	Vec2 reflect(Vec2 const& other);
+	float slope(bool swap) const;
 };
 
 struct Vec3: Vector<3> {

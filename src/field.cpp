@@ -44,6 +44,10 @@ Vec2 Vec2::reflect(Vec2 const& other) {
 	return rotated.rotate_by(other);
 }
 
+float Vec2::slope(bool swap) const {
+	return v[!swap]/v[swap];
+}
+
 float Vec3::determinant(Vector const& other) const {
 	return v[1]*other[2]-v[2]*other[1] + v[0]*other[2]-v[2]*other[0] + v[0]*other[1]-v[1]*other[0];
 }

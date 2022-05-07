@@ -321,6 +321,7 @@ struct Vertex {
 
 struct Path {
 	std::vector<Vec2> points;
+	std::vector<GLuint> parts = {0};
 	bool fill;
 	bool closed;
 
@@ -342,12 +343,16 @@ struct Path {
 	float miter_limit=4;
 
 	void arc(float angle, Vec2 to, size_t divisions);
-	void fan(Vec2 to, size_t divisions);
+	void fan(Vec2 to, Vec2 center, size_t divisions);
 	void cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res);
 	//merges other path into this path
 	void merge(Path const& other);
 	//expands path to stroke_width, sets fill=true and stroke_width=0
 	Path stroke() const;
+
+	std::vector<GLuint>::const_iterator part(GLuint i) const;
+	GLuint next(std::vector<GLuint>::const_iterator part, GLuint i) const;
+	GLuint prev(std::vector<GLuint>::const_iterator part, GLuint i) const;
 
  private:
 	void stroke_side(Path& expanded, bool cw) const;
