@@ -4,6 +4,7 @@
 #include <utility>
 #include <variant>
 #include <chrono>
+#include <thread>
 
 #include <event2/event.h>
 #include <event2/buffer.h>
@@ -46,15 +47,19 @@ struct WebServerSocketError: public std::exception {
 class WebServer {
  public:
 	WebServer(RequestHandlerFactory* factory, int port=80);
+	~WebServer();
 
 	std::chrono::seconds timeout = std::chrono::seconds(10);
-	size_t max_content = 1024*1024*100; //100 mb
+	size_t max_content = 1024*1024*100;
 
 	RequestHandlerFactory* handler_factory;
 	std::optional<WebServerSocketError> sock_err;
 
+	void block();
+
  private:
 	struct event_base* event_base;
+	struct evconnlistener* listener;
 
 	static void listen_error(struct evconnlistener* listener, void* data);
 	static void accept(struct evconnlistener* listener, int fd, struct sockaddr* addr, int addrlen, void* data);
@@ -67,9 +72,15 @@ struct URLFormData {
 	std::string value;
 };
 
+struct Header {
+	std::string val;
+	std::vector<std::pair<std::string, std::string>> extra;
+};
+
 struct MultipartFormData {
-	std::string name;
-	std::string mime;
+	std::vector<std::pair<std::string, Header>> headers;
+	char const* name;
+	char const* mime;
 
 	std::vector<char> content;
 };
@@ -80,16 +91,28 @@ struct RequestContent {
 	std::vector<MultipartFormData> multipart_formdata;
 };
 
+struct Response {
+	int status;
+	std::vector<std::pair<std::string, Header>> headers;
+	std::optional<MaybeOwnedSlice<const char>> content;
+
+	static Response html(char const* html) {
+		return {.status=200, .headers={std::make_pair("Content-Type", Header {.val="text/html"})}, .content=std::make_optional(MaybeOwnedSlice(html, strlen(html), false))};
+	}
+};
+
 struct Request {
  public:
+	std::mutex mtx;
 	Method method;
-	Map<std::string, std::string> headers;
+	Map<std::string, Header> headers;
 	bool read_content = false;
 
 	struct bufferevent* bev;
 	WebServer& serv;
 
 	void handle(RequestHandlerFactory* factory);
+	void respond(Response const& resp);
 	~Request();
 
  private:
@@ -97,8 +120,7 @@ struct Request {
 
 	Request(WebServer& serv, struct bufferevent* bev);
 
-	//OHGODOSAVEME
-	RequestHandler* req_handler;
+	std::unique_ptr<RequestHandler> req_handler;
 
 	enum class ParsingState {
 		RequestLine,
@@ -108,18 +130,11 @@ struct Request {
 	};
 
 	ParsingState pstate;
-	std::optional<std::string> multipart_boundary;
 
 	static void readcb(struct bufferevent* formdata, void* data);
 	static void eventcb(struct bufferevent* bev, short events, void* data);
 
 	friend class WebServer;
-};
-
-struct Response {
-	int status;
-	std::vector<std::pair<std::string, std::string>> headers;
-	MaybeOwnedSlice<char> content;
 };
 
 class RequestHandler {
@@ -135,7 +150,10 @@ class RequestHandler {
 	virtual void request_parse_err() {
 		//alternatively, respond bad req / err page
 		delete req;
-		delete this;
+	}
+
+	virtual void request_close() {
+		delete req;
 	}
 
 	virtual ~RequestHandler() {}
@@ -148,25 +166,29 @@ struct RequestHandlerFactory {
 	virtual RequestHandler* handle(Request* req) = 0;
 };
 
+struct StaticContent: public RequestHandlerFactory {
+	Response resp;
+
+	struct ContentHandler: public RequestHandler {
+		Response const& resp;
+		ContentHandler(Request* req, Response const& resp);
+	};
+
+	RequestHandler* handle(Request* req) override;
+};
+
 struct Router: public RequestHandlerFactory {
 	struct RouterRequestHandler: public RequestHandler {
 		Router& parent;
 		RouterRequestHandler(Request* req, Router& parent): RequestHandler(req), parent(parent) {}
 
-		void on_segment_recv(std::string const& seg) override {
-			auto fact = parent.routes[seg];
-			if (!fact) fact = &parent.not_found;
-
-			this->req->handle(fact->get());
-		}
+		void on_segment_recv(std::string const& seg) override;
 	};
 
 	Map<std::string, std::unique_ptr<RequestHandlerFactory>> routes;
 	std::unique_ptr<RequestHandlerFactory> not_found;
 
-	RequestHandler* handle(Request* req) override {
-		return new RouterRequestHandler(req, *this);
-	}
+	RequestHandler* handle(Request* req) override;
 };
 
 #endif //CORECOMMON_SRC_SERVER_HPP_

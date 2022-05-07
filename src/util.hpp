@@ -7,6 +7,24 @@
 #include <vector>
 #include <optional>
 
+template<class T>
+struct ConstReverseIterator {
+	T const& t;
+	using const_iterator = typename T::const_reverse_iterator;
+	ConstReverseIterator(T const& t): t(t) {}
+	typename T::const_reverse_iterator begin() const { return t.rbegin(); }
+	typename T::const_reverse_iterator end() const { return t.rend(); }
+};
+
+template<class T>
+struct ReverseIterator {
+	T& t;
+	using iterator = typename T::reverse_iterator;
+	ReverseIterator(T& t): t(t) {}
+	typename T::reverse_iterator begin() { return t.rbegin(); }
+	typename T::reverse_iterator end() { return t.rend(); }
+};
+
 template<class Arg, class ...Args>
 struct VarArgList {
 	static const bool is_last=true;
@@ -33,6 +51,42 @@ struct Identity {
 template<class T>
 struct False {
 	constexpr static bool value=false;
+};
+
+//copies when copied, otherwise holds ptr (assumed to be valid!)
+template<class T>
+struct Cow { //🐮
+	bool owned;
+	union {
+		T x;
+		T* x_ptr;
+	};
+
+	Cow(T const& x): x(x), owned(true) {}
+	Cow(T&& x): x(std::move(x)), owned(true) {}
+	Cow(T* x): x_ptr(x), owned(false) {}
+
+	Cow(Cow const& cow): x(cow.owned ? cow.x : *cow.x_ptr), owned(true) {}
+
+	T& operator*() {
+		return owned ? x : *x_ptr;
+	}
+
+	T const& operator*() const {
+		return owned ? x : *x_ptr;
+	}
+
+	T* operator->() {
+		return owned ? &x : x_ptr;
+	}
+
+	T const* operator->() const {
+		return owned ? &x : x_ptr;
+	}
+
+	~Cow() {
+		if (owned) ~T(x);
+	}
 };
 
 template<class T>

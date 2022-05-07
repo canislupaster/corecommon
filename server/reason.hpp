@@ -1,7 +1,7 @@
 #ifndef CORECOMMON_SERVER_REASON_HPP_
 #define CORECOMMON_SERVER_REASON_HPP_
 
-char* reason(int code) {
+char const* reason(int code) {
 	switch (code) {
 		case 100: return "Section 10.1.1: Continue";
 		case 101: return "Section 10.1.2: Switching Protocols";
