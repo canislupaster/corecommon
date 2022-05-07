@@ -3,10 +3,12 @@
 #include "numeric.hpp"
 
 int main(int argc, char** argv) {
-	Digital x(100);
-	Digital y(3);
-	x /= y;
+	Rational x(Digital(21849),Digital(182));
 	std::cout << x << std::endl;
+	x.round(5);
+
+	std::cout << x << std::endl;
+	std::cout << Digital(127) << std::endl;
 
 	return 0;
 }

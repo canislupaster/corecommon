@@ -2,82 +2,56 @@
 
 #include <algorithm>
 
-Digital::Digital(std::initializer_list<uint16_t> x, bool neg, int e): digits(x), exponent(e), repeat(0), negative(neg) {}
+Digital::Digital(std::initializer_list<uint16_t> x, bool neg, int e): digits(x), exponent(e), negative(neg) {}
 
-Digital::Digital(uint16_t x, bool neg, int e, unsigned int len): digits(len, x), exponent(e), repeat(0), negative(neg) {}
+Digital::Digital(uint16_t x, bool neg, int e, unsigned int len): digits(len, x), exponent(e), negative(neg) {}
 
-Digital::Digital(int16_t x): Digital(x, x<0, 0, x!=0) {}
+Digital::Digital(uint64_t x, bool neg): Digital({static_cast<uint16_t>(x>>48), static_cast<uint16_t>((x>>32)&UINT16_MAX), static_cast<uint16_t>((x>>16)&UINT16_MAX), static_cast<uint16_t>(x&UINT16_MAX)}, x<0, 3) {
+	trim();
+}
+
+Digital::Digital(int64_t x): Digital(static_cast<uint64_t>(x), x<0) {}
 
 Digital Digital::UInt(uint16_t x) {
 	return Digital(x, false);
 }
 
 void Digital::pad(int e, int end) {
-	if (digits.size()==0) digits.push_back(0);
-
+//	if (digits.size()==0) digits.push_back(0);
+//
 	if (exponent<e) {
 		digits.insert(digits.begin(), e-exponent, (negative && digits.back()>0) ? static_cast<uint16_t>(-1) : 0);
 		exponent = e;
 	}
 
 	unsigned other_offset = exponent-end+1;
-	if (other_offset>digits.size()-repeat) {
-		if (repeat) {
-			unsigned extension = 1 + (other_offset-digits.size()+repeat-1)/repeat;
-			for (unsigned i=0; i<extension; i++) {
-				digits.insert(digits.end(), digits.end()-repeat, digits.end());
-			}
-		} else {
-			digits.insert(digits.end(), other_offset-digits.size(), 0);
-		}
+	if (other_offset>digits.size()) {
+		digits.insert(digits.end(), other_offset-digits.size(), 0);
 	}
 }
 
 void Digital::trim() {
-	if (!digits.size()) return;
-
 	auto iter=digits.begin();
-	while (iter!=digits.end()-repeat && (negative ? *iter==UINT16_MAX : *iter==0)) iter++;
+	while (digits.end()-iter>1 && (negative ? *iter==UINT16_MAX : *iter==0)) iter++;
 	exponent-=iter-digits.begin();
 	digits.erase(digits.begin(), iter);
 
-	if (repeat) {
-		//maybe i should delete this takes way too long for every single goddamn arithmetic op
-		//TODO: throw this away
-		for (unsigned i=1; i<repeat; i++) {
-			if (repeat%i!=0) continue;
-			bool works=true;
-			for (unsigned k=i; k<repeat; k++) {
-				if (*(digits.rbegin()+(k%i))!=*(digits.rbegin()+k)) {
-					works=false; break;
-				}
-			}
+	iter=digits.end()-1;
+	while (iter-digits.begin()>0 && *iter==0) iter--;
 
-			if (works) {
-				repeat=i;
-				digits.erase(digits.end()-repeat+i, digits.end());
-			}
-		}
-	} else {
-		iter=digits.end()-1;
-		if (iter>digits.begin()) {
-			while (*iter==0) iter--;
-		}
-
-		digits.erase(iter+1, digits.end()-repeat);
-	}
+	digits.erase(iter+1, digits.end());
 }
 
-Digital& Digital::add(uint16_t x, int e) {
+Digital& Digital::add(uint16_t x, int e, bool do_trim) {
 	pad(e, e);
 
-	auto iter = digits.begin() + exponent - e;
+	auto iter = digits.rend()-1 - exponent + e;
 
 	*iter += x;
 	bool carry = *iter<x;
 
-	for (; carry && iter!=digits.begin()-1; iter--) {
-		*iter++;
+	for (iter++; carry && iter!=digits.rend(); iter++) {
+		(*iter)++;
 		carry = *iter==0;
 	}
 
@@ -90,20 +64,20 @@ Digital& Digital::add(uint16_t x, int e) {
 		}
 	}
 
-	trim();
+	if (do_trim) trim();
 	return *this;
 }
 
-Digital& Digital::sub(uint16_t x, int e) {
+Digital& Digital::sub(uint16_t x, int e, bool do_trim) {
 	pad(e, e);
 
-	auto iter = digits.begin() + exponent - e;
+	auto iter = digits.rend()-1 - exponent + e;
 	bool borrow = *iter<x;
 	*iter-=x;
 
-	for (; borrow && iter!=digits.begin()-1; iter--) {
+	for (iter++; borrow && iter!=digits.rend(); iter++) {
 		borrow = *iter==0;
-		*iter--;
+		(*iter)--;
 	}
 
 	if (borrow) {
@@ -115,7 +89,7 @@ Digital& Digital::sub(uint16_t x, int e) {
 		}
 	}
 
-	trim();
+	if (do_trim) trim();
 	return *this;
 }
 
@@ -128,54 +102,16 @@ Digital& Digital::operator-=(uint16_t x) {
 }
 
 Digital& Digital::operator+=(Digital const& other) {
-	if (other.digits.size()==0) return *this;
-
 	pad(other.exponent, other.exponent-other.digits.size()+1);
-	unsigned other_offset = exponent-other.exponent+other.digits.size();
 
 	bool carry=false;
-
-	unsigned other_repeat_offset = other.repeat ? ((digits.size()-1-other_offset) % other.repeat) : 0;
-
-	if (repeat && other.repeat) {
-		unsigned newrepeat = lcm(repeat, other.repeat);
-
-		for (unsigned i=0; i<newrepeat-repeat; i++) {
-			 digits.insert(digits.end(), *(digits.end()-i-repeat+(i%repeat)));
-		}
-
-		for (unsigned i=0; i<newrepeat; i++) {
-			uint16_t& digit = *(digits.rbegin()+i);
-			uint16_t const& other_digit = *(other.digits.rbegin()+other.repeat-1 - (other_repeat_offset + other.repeat-i)%other.repeat);
-
-			digit += other_digit + carry;
-			carry = carry ? digit<=other_digit : digit<other_digit;
-		}
-
-		bool repeat_carry = carry;
-		for (unsigned i=0; repeat_carry && i<newrepeat; i++) {
-			 uint16_t& digit = *(digits.rbegin()+i);
-			 digit++;
-			 repeat_carry = digit==0;
-		}
-
-		repeat=newrepeat;
-	}
+	bool all_zero=true;
 
 	auto iter = digits.rend() - (exponent-other.exponent) - other.digits.size();
 
-	if (other.repeat) {
-		for (unsigned i=0; i<digits.size()-other_offset; i++) {
-			uint16_t const& other_digit = *(other.digits.rbegin()+other.repeat-1-(other_repeat_offset+other.repeat-i) % other.repeat);
-			*iter += other_digit + carry;
-			carry = carry ? *iter<=other_digit : *iter<other_digit;
-
-			iter++;
-		}
-	}
-
-	for (auto other_iter=other.digits.rbegin()+other.repeat; other_iter!=other.digits.rend(); other_iter++) {
+	for (auto other_iter=other.digits.rbegin(); other_iter!=other.digits.rend(); other_iter++) {
 		*iter += *other_iter + carry;
+		if (*iter!=0) all_zero=false;
 		carry = carry ? *iter<=*other_iter : *iter<*other_iter;
 
 		iter++;
@@ -184,6 +120,7 @@ Digital& Digital::operator+=(Digital const& other) {
 	if (other.negative) {
 		for (; iter!=digits.rend(); iter++) {
 			(*iter)--;
+			if (*iter!=0) all_zero=false;
 			carry = carry || *iter<UINT16_MAX;
 		}
 	} else {
@@ -193,23 +130,23 @@ Digital& Digital::operator+=(Digital const& other) {
 		}
 	}
 
-	if (other.repeat && !repeat) {
-		for (unsigned i=0; i<other.repeat; i++) {
-			digits.insert(digits.end(), *(other.digits.rbegin()+other.repeat-1-(other_repeat_offset+1+i) % other.repeat));
-		}
-
-		repeat = other.repeat;
-	}
-
 	if (carry) {
 		if (negative!=other.negative) {
 			negative = false;
+		} else if (!negative) {
+			exponent++;
+			digits.insert(digits.begin(), 1);
+		} else if (all_zero) {
+			digits = decltype(digits)({UINT16_MAX});
+			exponent++;
+		}
+	} else if (other.negative) {
+		if (!negative) {
+			negative=true;
 		} else {
 			exponent++;
-			digits.insert(digits.begin(), negative ? static_cast<uint16_t>(-2) : 1);
+			digits.insert(digits.begin(), UINT16_MAX-1);
 		}
-	} else if (!negative && other.negative) {
-		negative=true;
 	}
 
 	trim();
@@ -230,6 +167,16 @@ Digital& Digital::negate() {
 	}
 
 	return *this;
+}
+
+void Digital::round(unsigned sigfigs) {
+	if (digits.size()>sigfigs) {
+		if (digits[sigfigs]>=UINT16_MAX/2) {
+			add(1, exponent-sigfigs+1);
+		}
+
+		digits.erase(digits.begin()+sigfigs, digits.end());
+	}
 }
 
 Digital Digital::operator-() const {
@@ -258,10 +205,6 @@ Digital& Digital::operator<<=(int x){
 
 	uint16_t rest = 0;
 	auto iter = digits.rbegin();
-	if (repeat) {
-		rest=*iter>>(16-x);
-		*iter = (*iter<<x) | rest;
-	}
 
 	for (; iter<digits.rend(); iter++) {
 		uint16_t swap_rest = *iter>>(16-x);
@@ -299,90 +242,60 @@ Digital Digital::operator<<(int x) const {
 
 Digital Digital::operator*(Digital const& other) const {
 	Digital res(0, false, exponent + other.exponent, 0);
-	Digital summand(0, false, 1, 2);
 
 	Digital a_rep(0), b_rep(0), rep(0);
 
-	if (repeat) {
-		a_rep = Digital(0, false, exponent-digits.size()+repeat, repeat);
-		std::copy(digits.begin()+digits.size()-repeat, digits.end(), a_rep.digits.begin());
-
-		Digital den(UINT16_MAX, false, repeat-1, repeat);
-		rep += (a_rep*other<<(repeat*16))/den;
-	}
-
-	if (other.repeat) {
-		b_rep = Digital(0, false, other.exponent-other.digits.size()+other.repeat, other.repeat);
-		std::copy(other.digits.begin()+other.digits.size()-other.repeat, other.digits.end(), b_rep.digits.begin());
-
-		Digital den(UINT16_MAX, false, other.repeat-1, other.repeat);
-		rep += (b_rep*(*this) << (other.repeat*16))/den;
-	}
-
-	if (repeat && other.repeat) {
-		//👀
-		Digital den(UINT16_MAX, repeat+other.repeat-1, repeat+other.repeat);
-		den.trim();
-		den -= Digital(2) << (16*repeat);
-		den -= Digital(2) << (16*other.repeat);
-
-		rep += (a_rep*b_rep << (16*(repeat+other.repeat)))/den;
-		res = rep;
-	}
-
-	for (unsigned i=0; i<digits.size()-repeat; i++) {
+	for (unsigned i=0; i<digits.size(); i++) {
 		int e1 = exponent - static_cast<int>(i);
-		for (unsigned j=0; j<other.digits.size()-other.repeat; j++) {
-			summand.exponent = e1 + other.exponent - static_cast<int>(j) + 1;
+		for (unsigned j=0; j<other.digits.size(); j++) {
+			int e2 = e1 + other.exponent - static_cast<int>(j);
 
 			uint32_t mul = digits[i]*other.digits[j];
-			summand.digits[0] = static_cast<uint16_t>(mul >> 16);
-			summand.digits[1] = static_cast<uint16_t>(mul & UINT16_MAX);
-
-			res += summand;
+			res.add(static_cast<uint16_t>(mul >> 16), e2+1, false);
+			res.add(static_cast<uint16_t>(mul & UINT16_MAX), e2, false);
 		}
 	}
 
 	res.trim();
 	if (negative && other.negative) {
-		res += other << (16*(exponent+1));
-		res += *this << (16*(other.exponent+1));
-		res -= 1 << (16*(other.exponent+exponent+2));
+		res -= other << (16*(exponent+1));
+		res -= *this << (16*(other.exponent+1));
+		res.sub(1, other.exponent+exponent+2);
 	} else if (negative) {
 		res -= other << (16*(exponent+1));
 	} else if (other.negative) {
 		res -= *this << (16*(other.exponent+1));
 	}
 
-//	res.negative = negative ^ other.negative;
 	return res;
 }
 
-Digital::DivisionResult Digital::div(Digital const& other, int end, int repeat_max) const {
+Digital::DivisionResult Digital::div(Digital const& other, int prec, bool round) const {
 	if (other==0) throw DivZero();
 	else if (*this==0) return DivisionResult {.quotient=Digital(0), .remainder=Digital(0)};
 
 	Digital res(0, false, exponent - other.exponent);
 	Digital rem = negative ? -*this : *this;
 
-	int rep_min = other.exponent - static_cast<int>(other.digits.size()) - exponent + static_cast<int>(digits.size());
-
 	uint16_t leading = other.digits.front();
 
 	if (other.negative) {
-		auto nonzero = std::find_if_not(other.digits.rbegin(), other.digits.rend(), [](uint16_t x){return x==0;});
+		decltype(digits)::const_reverse_iterator nonzero = std::find_if_not(other.digits.rbegin(), other.digits.rend(), [](uint16_t x){return x==0;});
 		if (nonzero>=other.digits.rend()-1) leading = -leading;
 		else leading = ~leading;
 	}
 
 	uint32_t wide_leading = static_cast<uint32_t>(leading);
 
-	std::optional<Digital> rem_repeat;
-	for (size_t i=0; (exponent-other.exponent-static_cast<int>(i))>=end; i++) {
+	for (size_t i=0; i<=prec; i++) {
 		uint32_t wide_div = (static_cast<uint32_t>(rem.digits[0])<<16)/wide_leading;
-		bool end_next = (exponent-other.exponent-static_cast<int>(i))==end;
-		uint16_t lo = end_next ? 0 : static_cast<uint16_t>(wide_div & UINT16_MAX);
+		uint16_t lo = static_cast<uint16_t>(wide_div & UINT16_MAX);
 		uint16_t hi = static_cast<uint16_t>(wide_div>>16);
+
+		if (i==prec) {
+			if (round && lo>=UINT16_MAX/2) hi++;
+			lo=0;
+		}
 
 		if (hi) res.add(hi, exponent-other.exponent-i);
 		else if (res.exponent-static_cast<int>(res.digits.size())>exponent-other.exponent-static_cast<int>(i)) {
@@ -392,8 +305,8 @@ Digital::DivisionResult Digital::div(Digital const& other, int end, int repeat_m
 		if (lo) {
 			res.digits.insert(res.digits.end(), lo);
 			if (other.negative) rem += other*Digital({hi, lo}, false, exponent-other.exponent-i);
-			else rem += other*Digital({static_cast<uint16_t>(lo==0 ? -hi : ~hi),
-					                          static_cast<uint16_t>(lo==0 ? 0 : -lo)}, wide_div!=0, exponent-other.exponent-i);
+			else rem += other*Digital({static_cast<uint16_t>(~hi),
+					                          static_cast<uint16_t>(-lo)}, wide_div!=0, exponent-other.exponent-i);
 		} else if (hi) {
 			if (other.negative) rem += other*Digital({hi}, false, exponent-other.exponent-i);
 			else rem += other*Digital({static_cast<uint16_t>(-hi)}, wide_div!=0, exponent-other.exponent-i);
@@ -401,23 +314,13 @@ Digital::DivisionResult Digital::div(Digital const& other, int end, int repeat_m
 
 		if (rem==0) {
 			break;
-		} else if (end==INT_MIN && i>rep_min) {
-			if (!rem_repeat) {
-				rem_repeat.emplace(rem);
-				continue;
-			} else if (i-rep_min>repeat_max) {
-				break;
-			}
-
-			rem_repeat->exponent=rem.exponent;
-			if (*rem_repeat==rem) {
-				res.repeat=i-other.exponent+exponent;
-				break;
-			}
 		}
 	}
 
-	if (other.negative!=negative) res.negate();
+	if (other.negative!=negative) {
+		res.negate();
+		rem.negate();
+	}
 
 	res.trim();
 	return (DivisionResult){.quotient=res, .remainder=rem};
@@ -427,7 +330,10 @@ Digital Digital::operator/(Digital const& other) const {
 	return div(other).quotient;
 }
 
-//Decimal Decimal::operator%=(Decimal const& other) {
+Digital Digital::operator%=(Digital const& other) {
+	return div(other, exponent-other.exponent+1, false).remainder;
+}
+
 //	while (true) {
 //		if (this->exponent<other.exponent) return *this;
 //		else if (this->exponent==other.exponent) {
@@ -466,68 +372,61 @@ std::ostream& operator<<(std::ostream& os, Digital const& x){
 		os << "-";
 	}
 
-	int offset=0;
-	while (copy.exponent>0) {
-		copy /= 10;
-		offset--;
+	bool is_frac = copy.exponent + 1 < copy.digits.size();
+	Digital frac = is_frac ? copy : 0;
+	if (is_frac) {
+		frac.digits.erase(frac.digits.begin(), frac.digits.begin()+frac.exponent+1);
+		copy.digits.erase(copy.digits.begin()+copy.exponent+1, copy.digits.end());
 	}
 
-	while (copy.exponent>-2 && copy>0) {
-
+	std::stringstream ss;
+	while (copy>0) {
+		Digital::DivisionResult res = copy.div(10, copy.exponent, false);
 		if (res.remainder>=1) ss<<res.remainder.digits.front();
 		else ss<<"0";
-		copy /= 10;
 
-		offset--;
-		if (offset==0) ss << ".";
-	}
-
-	if (offset>0) {
-		for (; offset>0; offset--) ss << "0";
-		ss << ".";
+		copy = res.quotient;
 	}
 
 	std::string cpy(ss.str());
 	std::reverse(cpy.begin(), cpy.end());
 	os << cpy;
 
+	if (is_frac) os<<".";
+	while (frac>0) {
+		frac*=10;
+		if (frac.exponent<0) {
+			os<<"0";
+		} else {
+			os<<frac.digits.front();
+			frac.digits.erase(frac.digits.begin());
+		}
+	}
+
 	return os;
 }
 
 bool Digital::cmp(Digital const& other, CmpType cmp_t) const {
-	if (other.digits.size()==0)
-		return digits.size()==0 ? (cmp_t==CmpType::Eq || cmp_t==CmpType::Geq) : (cmp_t!=CmpType::Eq && !negative);
-	else if (digits.size()==0)
-		return cmp_t!=CmpType::Eq && other.negative;
+//	if (other.digits.size()==0)
+//		return digits.size()==0 ? (cmp_t==CmpType::Eq || cmp_t==CmpType::Geq) : (cmp_t!=CmpType::Eq && !negative);
+//	else if (digits.size()==0)
+//		return cmp_t!=CmpType::Eq && other.negative;
 
 	if (negative!=other.negative) return cmp_t!=CmpType::Eq && other.negative;
 
 	if (exponent>other.exponent) return cmp_t!=CmpType::Eq && !negative;
 	else if (other.exponent<exponent) return cmp_t!=CmpType::Eq && negative;
 
-	if (!other.repeat && digits.size()>other.digits.size()) return cmp_t!=CmpType::Eq && !negative;
-	else if (!repeat && digits.size()<other.digits.size()) return cmp_t!=CmpType::Eq && negative;
+	if (digits.size()>other.digits.size()) return cmp_t!=CmpType::Eq && !negative;
+	else if (digits.size()<other.digits.size()) return cmp_t!=CmpType::Eq && negative;
 
 	auto iter1=digits.begin(), iter2=other.digits.begin();
-	long d=0;
 
-	do {
-		while (iter1!=digits.end() && iter2!=other.digits.end()) {
-			if (*iter2 < *iter1) return cmp_t!=CmpType::Eq && !negative;
-			else if (*iter1 < *iter2) return cmp_t!=CmpType::Eq && negative;
-			iter1++; iter2++;
-		}
-
-		if (repeat && iter1==digits.end()) {
-			d+=repeat;
-			iter1-=repeat;
-		}
-
-		if (other.repeat && iter2==other.digits.end()) {
-			d-=other.repeat;
-			iter2-=other.repeat;
-		}
-	} while (d!=0);
+	while (iter1!=digits.end() && iter2!=other.digits.end()) {
+		if (*iter2 < *iter1) return cmp_t!=CmpType::Eq && !negative;
+		else if (*iter1 < *iter2) return cmp_t!=CmpType::Eq && negative;
+		iter1++; iter2++;
+	}
 
 	return cmp_t==CmpType::Geq || cmp_t==CmpType::Eq;
 }
@@ -554,4 +453,53 @@ bool Digital::operator==(Digital const& other) const {
 
 bool Digital::operator!=(Digital const& other) const {
 	return !cmp(other, CmpType::Eq);
+}
+
+Rational::Rational(Digital num, Digital den): num(std::move(num)), den(std::move(den)) {}
+
+Rational Rational::approx(Digital x, unsigned int prec) {
+	Rational ret(std::move(x),1);
+	int off = ret.num.digits.size()-ret.num.exponent-1;
+	if (off>0) {
+		ret.den<<off;
+		ret.num<<off;
+	}
+
+	ret.round(prec);
+	return ret;
+}
+
+void Rational::round(unsigned int prec) {
+	Digital a=1,b=0,c=1,d=0;
+	for (; prec!=0; prec--) {
+		if (num.exponent>=den.exponent) {
+			Digital::DivisionResult num_d = num.div(den, num.exponent-den.exponent, prec==1);
+			num = num_d.remainder;
+			b -= num_d.quotient*c;
+			a -= num_d.quotient*d;
+		}
+
+		if (num==0) {
+			num = a.negative ? b : -b;
+			den = a.negative ? -a : a;
+			return;
+		}
+
+		if (den.exponent>=num.exponent) {
+			Digital::DivisionResult den_d = den.div(num, den.exponent-num.exponent, prec==1);
+			den = den_d.remainder;
+			c -= den_d.quotient*b;
+			d -= den_d.quotient*a;
+		}
+
+		if (den==0) break;
+	}
+
+	num = d.negative ? c : -c;
+	den = d.negative ? -d : d;
+}
+
+std::ostream& operator<<(std::ostream& os, Rational const& x){
+	os << x.num << "/" << x.den;
+	return os;
 }

@@ -5,25 +5,21 @@
 #include <variant>
 #include <complex>
 
-#include "smallvec.hpp"
+#include "smallvector.hpp"
 #include "util.hpp"
 
-struct Operation;
-
-struct Rational {
-	long upper, lower;
-};
-
+//this PoS (piece of shit) is so slow never use it!
+//only a toy until i actually get my hands dirty
 class Digital {
  public:
 	bool negative;
 	int exponent; //highest digit corresponds to 2^(exponent*16)
-	unsigned repeat; //period of last digits
-	SmallVec<uint16_t, 1> digits;
+	SmallVector<uint16_t, 1> digits;
 
 	Digital(uint16_t x, bool neg, int e=0, unsigned len=1);
 	Digital(std::initializer_list<uint16_t> x, bool neg, int e=0);
-	Digital(int16_t x);
+	Digital(uint64_t x, bool neg);
+	Digital(int64_t x);
 	static Digital UInt(uint16_t x);
 
 	void pad(int e, int end);
@@ -35,12 +31,14 @@ class Digital {
 		}
 	};
 
-	Digital& add(uint16_t x, int e);
-	Digital& sub(uint16_t x, int e);
+	Digital& add(uint16_t x, int e, bool do_trim=true);
+	Digital& sub(uint16_t x, int e, bool do_trim=true);
 	Digital& operator+=(uint16_t x);
 	Digital& operator-=(uint16_t x);
+
 	Digital& operator+=(Digital const& other);
 	Digital& negate();
+	void round(unsigned sigfigs);
 	Digital operator-() const;
 
 	Digital operator+(Digital const& other) const;
@@ -54,9 +52,9 @@ class Digital {
 
 	struct DivisionResult;
 
-	DivisionResult div(Digital const& other, int end=-INT_MIN, int repeat_max=20) const;
+	DivisionResult div(Digital const& other, int prec=10, bool round=true) const;
 	Digital operator/(Digital const& other) const;
-//	Decimal operator%=(Decimal const& other);
+	Digital operator%=(Digital const& other);
 
 	Digital& operator*=(Digital const& other);
 	Digital& operator/=(Digital const& other);
@@ -87,12 +85,17 @@ struct Digital::DivisionResult {
 
 std::ostream& operator<<(std::ostream& os, Digital const& x);
 
-enum class ExpressionType {
-	Rational,
-	Decimal,
-	Real,
-	Complex,
-	Operation
+struct Rational {
+	Digital num;
+	Digital den;
+
+	Rational(Digital num, Digital den);
+	static Rational approx(Digital x, unsigned prec);
+
+	void round(unsigned prec);
 };
+
+std::ostream& operator<<(std::ostream& os, Rational const& x);
+
 
 #endif //CORECOMMON_SRC_NUMERIC_HPP_

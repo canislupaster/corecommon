@@ -53,6 +53,42 @@ struct False {
 	constexpr static bool value=false;
 };
 
+//copies when copied, otherwise holds ptr (assumed to be valid!)
+template<class T>
+struct Cow { //🐮
+	bool owned;
+	union {
+		T x;
+		T* x_ptr;
+	};
+
+	Cow(T const& x): x(x), owned(true) {}
+	Cow(T&& x): x(std::move(x)), owned(true) {}
+	Cow(T* x): x_ptr(x), owned(false) {}
+
+	Cow(Cow const& cow): x(cow.owned ? cow.x : *cow.x_ptr), owned(true) {}
+
+	T& operator*() {
+		return owned ? x : *x_ptr;
+	}
+
+	T const& operator*() const {
+		return owned ? x : *x_ptr;
+	}
+
+	T* operator->() {
+		return owned ? &x : x_ptr;
+	}
+
+	T const* operator->() const {
+		return owned ? &x : x_ptr;
+	}
+
+	~Cow() {
+		if (owned) ~T(x);
+	}
+};
+
 template<class T>
 struct LazyInitialize {
 	std::optional<T> t;

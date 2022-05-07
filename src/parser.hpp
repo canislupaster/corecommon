@@ -85,10 +85,21 @@ template<class T, class FromArg, class ToArg>
 class ParseMap;
 
 template<class InnerMap>
+struct Many;
+
+struct Match;
+
+template<class Result>
+struct Ignore;
+
+template<class InnerMap>
 struct Not;
 
 template<class Left, class Right>
 struct Chain;
+
+template<class To, class InnerMap>
+struct Combine;
 
 template<class SkipMap, class Result>
 struct Skip;
@@ -125,6 +136,16 @@ public:
 		return *this + Skip<To, SkipMap>(skip);
 	}
 
+	Many<T> maybe() const {
+		return Many(0,1,*static_cast<T const*>(this));
+	}
+
+	template<class Sep>
+	Chain<Combine<From, T>, Many<Chain<Skip<From, Sep>, T>>> separated(Sep sep) const {
+		T const* x = static_cast<T const*>(this);
+		return Combine<From, T>(*x) + Many(Skip<From, Sep>(sep) + *x);
+	}
+
 	template<class Right>
 	Or<T, Right> operator||(Right rhs) const {
 		return Or<T, Right> {.left = *static_cast<T const*>(this), .right=rhs};
@@ -135,7 +156,7 @@ template<class From, class To>
 struct LazyMap: public ParseMap<LazyMap<From, To>, From, To> {
 	const std::function<Parser<To>(Parser<From> const&)> lzmap;
 
-	LazyMap(std::function<Parser<To>(Parser<From> const&)> lazymap): lzmap(lzmap) {}
+	LazyMap(std::function<Parser<To>(Parser<From> const&)> lazymap): lzmap(lazymap) {}
 
 	Parser<To> run(Parser<From> const& parser) const {
 		//:#
@@ -163,8 +184,10 @@ struct ErrorMap: public ParseMap<ErrorMap<From>, From, From> {
 
 	Parser<From> run(Parser<From> const& parser) const {
 		if (cond(parser.res)) {
-			parser.err = true;
-			parser.stat = ParseStatus::Error;
+			Parser<From> new_parser = parser;
+			new_parser.err = true;
+			new_parser.stat = ParseStatus::Error;
+			return new_parser;
 		}
 
 		return parser;
@@ -252,6 +275,22 @@ struct Chain: public ParseMap<Chain<Left, Right>, typename Left::From, typename 
 	}
 };
 
+template<class To, class InnerMap>
+struct Combine: public ParseMap<Combine<To, InnerMap>, typename InnerMap::From, To> {
+	const InnerMap in;
+	const std::function<To(typename InnerMap::From, typename InnerMap::To)> resmap;
+
+	Combine(InnerMap in, std::function<To(typename InnerMap::From, typename InnerMap::To)> resmap): in(in), resmap(resmap) {}
+	Combine(InnerMap in): in(in), resmap([](typename InnerMap::From a, typename InnerMap::To b){return a;}) {}
+
+	Parser<To> run(Parser<typename InnerMap::From> const& parser) const {
+		Parser<typename InnerMap::To> inner_parsed = in(parser);
+		if (inner_parsed.err) return Parser<To>(inner_parsed);
+
+		return Parser<To>(inner_parsed, resmap(parser.res, inner_parsed.res));
+	}
+};
+
 template<class Result, class SkipMap>
 struct Skip: public ParseMap<Skip<Result, SkipMap>, Result, Result> {
 	const SkipMap skip;
@@ -259,7 +298,7 @@ struct Skip: public ParseMap<Skip<Result, SkipMap>, Result, Result> {
 	Skip(SkipMap skip): skip(skip) {}
 
 	Parser<Result> run(Parser<Result> const& parser) const {
-		Parser<Unit> unit_parser(parser, Unit());
+		Parser<Unit> unit_parser = Parser<Unit>(parser, Unit());
 		Parser<Unit> skip_parser = skip(unit_parser);
 
 		if (skip_parser.err) return Parser<Result>(skip_parser);
@@ -301,15 +340,17 @@ struct ArrayMap: public ParseMap<ArrayMap<n, InnerMap>, typename InnerMap::From,
 	ArrayMap(InnerMap inner): inner(inner) {}
 
 	Parser<std::array<typename InnerMap::To, n>> run(Parser<typename InnerMap::From> const& parser) const {
+		Parser<typename InnerMap::From> new_parser = parser;
+
 		std::array<typename InnerMap::To, n> arr;
 
 		for (unsigned i=0; i<n; i++) {
-			Parser<typename InnerMap::To> inner_parser = inner(parser);
-			parser.span = inner_parser.span;
+			Parser<typename InnerMap::To> inner_parser = inner(new_parser);
+			new_parser.span = inner_parser.span;
 			arr[i] = inner_parser.res;
 		}
 
-		return Parser(parser, arr);
+		return Parser(new_parser, arr);
 	}
 };
 
@@ -359,6 +400,7 @@ struct ParseString: public ParseMap<ParseString<InnerMap>, typename InnerMap::Fr
 	Parser<std::string> run(Parser<typename InnerMap::From> const& parser) const {
 		char const* start = parser.span.text;
 		Parser<typename InnerMap::To> inner_parser = inner(parser);
+		if (inner_parser.err) return Parser<std::string>(inner_parser);
 		return Parser<std::string>(inner_parser, std::string(start, inner_parser.span.text - start));
 	}
 };

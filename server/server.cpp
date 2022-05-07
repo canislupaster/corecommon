@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "parser.hpp"
+#include "reason.hpp"
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -17,12 +18,18 @@ void WebServer::listen_error(struct evconnlistener* listener, void* data) {
 	serv->sock_err = std::optional(WebServerSocketError(err));
 }
 
-Request::Request(WebServer& serv, struct bufferevent* bev): serv(serv), bev(bev), pstate(ParsingState::RequestLine), content(nullptr) {}
+WebServer::~WebServer() {
+	evconnlistener_free(listener);
+	event_base_free(event_base);
+}
+
+Request::Request(WebServer& serv, struct bufferevent* bev): serv(serv), bev(bev), pstate(ParsingState::RequestLine), content(nullptr), req_handler() {}
 
 void WebServer::accept(struct evconnlistener* listener, int fd, struct sockaddr* addr, int addrlen, void* data) {
 	auto serv = static_cast<WebServer*>(data);
 
 	auto req = new Request(*serv, bufferevent_socket_new(serv->event_base, fd, BEV_OPT_CLOSE_ON_FREE));
+	req->mtx.lock();
 	bufferevent_enable(req->bev, EV_READ | EV_WRITE);
 
 	bufferevent_setcb(req->bev, &Request::readcb, nullptr, &Request::eventcb, static_cast<void*>(req));
@@ -31,6 +38,7 @@ void WebServer::accept(struct evconnlistener* listener, int fd, struct sockaddr*
 	bufferevent_set_timeouts(req->bev, &tout, nullptr);
 
 	req->handle(serv->handler_factory);
+	req->mtx.unlock();
 }
 
 WebServer::WebServer(RequestHandlerFactory* factory, int port): event_base(event_base_new()), handler_factory(factory) {
@@ -51,8 +59,6 @@ WebServer::WebServer(RequestHandlerFactory* factory, int port): event_base(event
 
 	//search for viable address
 	for (struct addrinfo* cur = res; cur; cur = cur->ai_next) {
-		struct evconnlistener *listener;
-
 		listener = evconnlistener_new_bind(
 				event_base, accept, this, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, 16,
 				cur->ai_addr, (int)cur->ai_addrlen);
@@ -68,13 +74,17 @@ WebServer::WebServer(RequestHandlerFactory* factory, int port): event_base(event
 	throw WebServerListenerError();
 }
 
+void WebServer::block() {
+	event_base_loop(event_base, 0);
+}
+
 char const* WebServerSocketError::what() const noexcept {
 	return evutil_socket_error_to_string(ev_err);
 }
 
 template<class Delimiter>
 Parser<std::string> percent_decode(Delimiter delim, Parser<Unit> const& parser) {
-	std::string decoded(Many<Delimiter>(delim).length(parser), 0);
+	std::string decoded(Many<Chain<Delimiter, Any>>(delim + Any()).length(parser), 0);
 
 	return (Many(delim + (
 			(Match("+") + ResultMap<Unit, Unit>([&](Unit x){decoded.push_back(' '); return Unit();}))
@@ -89,18 +99,37 @@ Parser<std::vector<URLFormData>> querystring_parse(Parser<Unit> const& parser) {
 	auto querystring_terminator = !ParseWS() + !Match("&") + !Match("=");
 	auto dec = LazyMap<Unit, std::string>([=](Parser<Unit> const& x) {return percent_decode(querystring_terminator, x);});
 
-	return Multiple(1, std::numeric_limits<size_t>::max(), TupleMap(dec, Match("=") + dec)
+	return Multiple(1, std::numeric_limits<size_t>::max(), (TupleMap(dec, Ignore<std::string>() + Match("=") + dec)
 			+ ResultMap<std::tuple<std::string, std::string>, URLFormData>([](auto x) {return URLFormData {.name=std::get<0>(x), .value=std::get<1>(x)};})
-			+ Skip<URLFormData, decltype(querystring_terminator)>(querystring_terminator)).run(parser);
+			).skip(querystring_terminator)).run(parser);
+}
+
+Parser<std::pair<std::string, Header>> parse_header(Parser<Unit> const& parser) {
+	auto val_sep = ParseWS() || Match(",") || Match(";");
+	return (TupleMap(ParseString(Many(!Match(":") + Any())), Ignore<std::string>() + Match(":") + ParseWS() +
+			ParseString(Many(!val_sep + Any()))) + LazyMap<std::tuple<std::string, std::string>, std::pair<std::string, Header>>([&](Parser<std::tuple<std::string, std::string>> const& parser) {
+		auto const& a = parser.res;
+		auto hdr = std::make_pair(std::get<0>(parser.res), Header {.val = std::get<1>(parser.res)});
+
+		auto parse_val = [&](auto str) {return ((Match("\"") + ParseString(Many(Match("\\") + Any()) || (!Match("\"") + Any())).skip(Match("\""))) || ParseString(Many(1, std::numeric_limits<size_t>::max(), !val_sep + Any()))) + ResultMap<std::string, Unit>([&](auto from) {
+			hdr.second.extra.push_back(std::make_pair(str, from));
+			return Unit();
+		});};
+
+		auto parse_vals_sep = (LazyMap<std::string, Unit>([&](auto key) {return (Ignore<std::string>() + parse_val(key.res)).run(key);}) + Many(Match(" "))).separated(Match(","));
+		auto parse_init_vals_sep = Many(Many(Match(" ")) + Match(",") + Many(Match(" ")) + parse_val(hdr.first));
+
+		return Parser((Ignore<std::tuple<std::string, std::string>>() + parse_init_vals_sep.maybe() + Many(Match(";") + Many(Match(" ")) + ParseString(Many(!ParseWS() + !Match("=") + Any())).skip(ParseWS() + Match("=") + ParseWS()) + parse_vals_sep)).run(parser), hdr);
+	})).run(parser);
 }
 
 void Request::readcb(struct bufferevent* bev, void* data) {
 	auto req = static_cast<Request*>(data);
+	req->mtx.lock();
 
 	struct evbuffer* evbuf = bufferevent_get_input(bev);
 	if (req->pstate == ParsingState::Done) {
 		evbuffer_drain(evbuf, evbuffer_get_length(evbuf)); //:P
-		return;
 	} else if (req->pstate == ParsingState::Content) {
 		size_t len = evbuffer_get_length(evbuf);
 		if (len > req->content->content_length) {
@@ -114,177 +143,213 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 			}
 
 			//handle supported formats
-			std::string* ctype = req->headers["Content-Type"];
-			if (!ctype || (*ctype!="application/x-www-form-urlencoded" && *ctype!="multipart/form-data")) {
+			Header* ctype = req->headers["Content-Type"];
+			if (!ctype) {
 				req->req_handler->request_parse_err();
-			} else if (*ctype=="application/x-www-form-urlencoded") {
+				return;
+			} else if (ctype->val=="application/x-www-form-urlencoded") {
 				if (req->read_content) {
 					content[len] = 0;
 
 					char* x = content.get();
 					(LazyMap<Unit, std::vector<URLFormData>>(querystring_parse)
 							+ ResultMap<std::vector<URLFormData>, Unit>([&](std::vector<URLFormData> const& formdata) {
-						req->content = std::make_unique<RequestContent>((RequestContent){.url_formdata = formdata});
+						req->content->url_formdata = formdata;
 						req->req_handler->on_content_recv();
 						return Unit();
 					})).run(x);
 				}
-			} else if (*ctype=="multipart/form-data") {
-				while (!skip_word(&content, session->parser.multipart_boundary) && *content) content++;
-				skip_newline(&content);
+			} else if (ctype->val=="multipart/form-data") {
+				auto ctype_iter = std::find_if(ctype->extra.begin(), ctype->extra.end(), [](auto x){return x.first=="boundary";});
+				if (ctype_iter==ctype->extra.end()) {
+					req->req_handler->request_parse_err();
+					return;
+				}
 
-				while (*content) {
-					//parse preamble
-					char* disposition=NULL, *mime=NULL;
-					while (*content && !skip_newline(&content)) {
-						if (skip_word(&content, "Content-Type:")) {
-							parse_ws(&content);
-							if (!mime) mime = parse_name(&content, "\r\n");
-							skip_newline(&content);
-						} else if (skip_word(&content, "Content-Disposition:")) {
-							parse_ws(&content);
-							if (!disposition) disposition = parse_name(&content, "\r\n");
-							skip_newline(&content);
-						} else {
-							skip_until(&content, "\r\n");
-							skip_newline(&content);
+				char* x = content.get();
+				char const* boundary = ctype_iter->second.c_str();
+
+				auto newl = Match("\n") || Match("\r\n");
+				auto parsed = (Many(Many(!Match(boundary) + Any()) + Match(boundary).skip(Match("--")) + newl + LazyMap<Unit, Unit>([=](Parser<Unit> const& x) -> Parser<Unit> {
+					MultipartFormData data;
+					auto res = Multiple(LazyMap<Unit, std::pair<std::string, Header>>(parse_header).skip(newl)).run(x);
+
+					data.headers = res.res;
+					for (auto& hd: data.headers) {
+						if (hd.first == "Content-Type") {
+							data.mime = hd.second.val.c_str();
+						} else if (hd.first == "Content-Disposition") {
+							auto iter = std::find_if(hd.second.extra.begin(), hd.second.extra.end(), [](auto x){return x.first=="name";});
+							if (iter!=hd.second.extra.end()) data.name = iter->second.c_str();
 						}
 					}
 
-					if (!disposition) {
-						if (disposition) drop(disposition);
-						if (mime) drop(mime);
+					char const* start = res.span.text;
 
-						respond_error(session, 500, "No disposition or mime");
-						terminate(session);
-						return 0;
+					unsigned long len = ctype_iter->second.size();
+					while (strncmp(res.span.text, boundary, len)!=0 && len<=res.span.length) {
+						res.span.text++;
+						res.span.length--;
 					}
 
-					vector_t val = parse_header_value(disposition);
-					char* disposition_name = query_extract_value(&val, "name");
-					drop(disposition);
+					data.content.insert(data.content.begin(), start, res.span.text);
+					req->content->multipart_formdata.push_back(data);
 
-					char* data_start = content;
+					return Parser(res, Unit());
+				}))).run(x);
 
-					unsigned long len = strlen(session->parser.multipart_boundary);
-					while (strncmp(content, session->parser.multipart_boundary, len)!=0
-							&& content - session->parser.req.content < session->parser.req.content_length)
-						content++;
-
-					unsigned long content_len = content-data_start;
-
-					//shrink non-mime content
-					if (!mime && *(content-1) == '\n') {
-						content_len--;
-						if (*(content-2) == '\r') content_len--;
-					}
-
-					multipart_data data = {.name=disposition_name, .mime=mime,
-							.content=heapcpy(content_len, data_start), .len=content_len};
-					vector_pushcpy(&session->parser.req.files, &data);
-
-					if (*content) {
-						content += strlen(session->parser.multipart_boundary);
-						if (skip_word(&content, "--")) break;
-						skip_newline(&content);
-					}
+				if (parsed.err) {
+					req->req_handler->request_parse_err();
+					return;
 				}
 
-				drop(session->parser.multipart_boundary);
-			}
-
-			if (session->parser.req.ctype == url_formdata) {
-			} else if (session->parser.req.ctype == multipart_formdata) {
+				req->req_handler->on_content_recv();
+			} else {
+				req->req_handler->request_parse_err();
+				return;
 			}
 
 			req->pstate = ParsingState::Done;
 		}
+	} else {
+		char* line;
+		while ((line = evbuffer_readln(evbuf, nullptr, EVBUFFER_EOL_CRLF))) {
+			Parser<Unit> parser(line);
 
-		return;
-	}
+			switch (req->pstate) {
+				case ParsingState::RequestLine: {
+					 Parser<Method> method = (Many(ParseWS()) + (Match("GET") + ResultMap<Unit, Method>([](auto x) {return Method::GET;}))
+							|| (Match("POST") + ResultMap<Unit, Method>([](auto x) {return Method::POST;}))
+							|| (Match("PATCH") + ResultMap<Unit, Method>([](auto x) {return Method::PATCH;}))
+							|| (Match("DELETE") + ResultMap<Unit, Method>([](auto x) {return Method::DELETE;}))
+							|| (Match("PUT") + ResultMap<Unit, Method>([](auto x) {return Method::PUT;}))
+							|| (Match("HEAD") + ResultMap<Unit, Method>([](auto x) {return Method::HEAD;}))).run(parser);
 
-	char* line;
-	while ((line = evbuffer_readln(evbuf, nullptr, EVBUFFER_EOL_CRLF))) {
-		Parser<Unit> parser(line);
+					 if (method.err) {
+							req->req_handler->request_parse_err();
+							return;
+					 }
 
-		switch (req->pstate) {
-			case ParsingState::RequestLine: {
-				Parser<Method> method = (Many(ParseWS()) + (Match("GET") + ResultMap<Unit, Method>([](auto x) {return Method::GET;}))
-					|| (Match("POST") + ResultMap<Unit, Method>([](auto x) {return Method::POST;}))
-					|| (Match("PATCH") + ResultMap<Unit, Method>([](auto x) {return Method::PATCH;}))
-					|| (Match("DELETE") + ResultMap<Unit, Method>([](auto x) {return Method::DELETE;}))
-					|| (Match("PUT") + ResultMap<Unit, Method>([](auto x) {return Method::PUT;}))
-					|| (Match("HEAD") + ResultMap<Unit, Method>([](auto x) {return Method::HEAD;}))).run(parser);
+					 auto path_terminator = Match("/") || ParseWS() || Match("?");
 
-				if (method.err) {
-					req->req_handler->request_parse_err();
-					return;
+					 Parser<Unit> path = (Ignore<Method>() + Many(Match("/") || ParseWS())
+							+ (ParseString(Many(1, std::numeric_limits<size_t>::max(), !path_terminator + Any())) + ResultMap<std::string, Unit>([&](const std::string& x) {
+								req->req_handler->on_segment_recv(x);
+								return Unit();
+							})).separated(Match("/")).maybe()).run(method);
+
+					 req->req_handler->on_path_recv();
+
+					 if (req->read_content) {
+							path = (Match("?")
+									 + LazyMap<Unit, std::vector<URLFormData>>(querystring_parse)
+									 + ResultMap<std::vector<URLFormData>, Unit>([&](std::vector<URLFormData> const& x) {
+								req->content = std::make_unique<RequestContent>(RequestContent {.url_formdata = x});
+								req->req_handler->on_content_recv();
+								return Unit();
+							})).run(path);
+					 }
+
+					 req->pstate = ParsingState::Headers;
+					 break;
 				}
-
-				auto path_terminator = Match("/") || ParseWS() || Match("?");
-
-				Parser<Unit> path = (Ignore<Method>() + Many(ParseWS())
-					+ Many(!ParseWS() + ParseString(!path_terminator) + ResultMap<std::string, Unit>([&](const std::string& x) {
-						req->req_handler->on_segment_recv(x);
-						return Unit();
-					}))).run(method);
-
-				req->req_handler->on_path_recv();
-
-				if (req->read_content) {
-					(Match("?")
-							+ LazyMap<Unit, std::vector<URLFormData>>(querystring_parse)
-							+ ResultMap<std::vector<URLFormData>, Unit>([&](std::vector<URLFormData> const& x) {
-						req->content = std::make_unique<RequestContent>(RequestContent {.url_formdata = x});
-						req->req_handler->on_content_recv();
-						return Unit();
-					})).run(path);
-				}
-
-				req->pstate = ParsingState::Headers;
-				break;
-			}
-			case ParsingState::Headers: {
-				if (strlen(line)==0) {
-					req->pstate = req->content ? ParsingState::Content : ParsingState::Done;
-					break;
-				}
-
-				if (req->read_content) {
-					Parser<long> clength = (Match("Content-Length:") + ParseWS() + ParseInt()).run(parser);
-
-					if (!clength.err) {
-						if (!req->content) req->content = std::make_unique<RequestContent>(RequestContent {.content_length=static_cast<size_t>(clength.res)});
-						else req->content->content_length = static_cast<size_t>(clength.res);
-
+				case ParsingState::Headers: {
+					if (strlen(line)==0) {
+						req->pstate = req->content ? ParsingState::Content : ParsingState::Done;
 						break;
 					}
-				}
 
-				Parser<std::tuple<std::string, std::string>> hdr = TupleMap(ParseString(!Match(":")), Match(":") + ParseWS() + ParseString(!ParseWS())).run(parser);
-				if (hdr.err) {
-					req->req_handler->request_parse_err();
-					return;
-				}
+					if (req->read_content) {
+						Parser<long> clength = (Match("Content-Length:") + ParseWS() + ParseInt()).run(parser);
 
-				req->headers.insert(std::get<0>(hdr.res), std::get<1>(hdr.res));
-				break;
+						if (!clength.err) {
+							if (!req->content) req->content = std::make_unique<RequestContent>(RequestContent {.content_length=static_cast<size_t>(clength.res)});
+							else req->content->content_length = static_cast<size_t>(clength.res);
+
+							break;
+						}
+					}
+
+					auto hdr = parse_header(parser);
+
+					if (hdr.err) {
+						req->req_handler->request_parse_err();
+						return;
+					}
+
+					req->headers.insert(hdr.res.first, hdr.res.second);
+
+					break;
+				}
+				default:;
 			}
-			default:;
 		}
+	}
+
+	req->mtx.unlock();
+}
+
+void Request::respond(Response const& resp) {
+	struct evbuffer* evbuf = bufferevent_get_output(bev);
+	evbuffer_add_printf(evbuf, "HTTP/1.1 %i %s\r\n", resp.status, reason(resp.status));
+
+	if (resp.content) {
+		evbuffer_add_printf(evbuf, "Content-Length: %lu\r\n", resp.content->size());
+	}
+
+	for (auto const& hdr: resp.headers) {
+		evbuffer_add_printf(evbuf, "%s:%s", hdr.first.c_str(), hdr.second.val.c_str());
+		for (auto const& extra: hdr.second.extra) {
+			evbuffer_add_printf(evbuf, ",%s=\"%s\"", extra.first.c_str(), extra.second.c_str());
+		}
+
+		evbuffer_add_printf(evbuf, hdr.second.extra.empty() ? "\r\n" : ";\r\n");
+	}
+
+	evbuffer_add_printf(evbuf, "\r\n");
+
+	if (resp.content) {
+		evbuffer_add(evbuf, resp.content->data, resp.content->size());
 	}
 }
 
 void Request::eventcb(struct bufferevent* bev, short events, void* data) {
+	Request* req = static_cast<Request*>(data);
 
+	req->mtx.lock();
+
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
+		req->req_handler->request_close();
+	}
+
+	req->mtx.unlock();
 }
 
 void Request::handle(RequestHandlerFactory* factory) {
-	req_handler = factory->handle(this);
+	req_handler = std::unique_ptr<RequestHandler>(factory->handle(this));
 }
 
 Request::~Request() {
 	bufferevent_disable(bev, EV_READ);
 	//just in case
 	bufferevent_free(bev);
+}
+
+void Router::RouterRequestHandler::on_segment_recv(std::string const& seg) {
+	auto fact = parent.routes[seg];
+	if (!fact) fact = &parent.not_found;
+
+	this->req->handle(fact->get());
+}
+
+RequestHandler* Router::handle(Request* req) {
+	return new RouterRequestHandler(req, *this);
+}
+
+StaticContent::ContentHandler::ContentHandler(Request* req, Response const& resp): RequestHandler(req), resp(resp) {
+	req->respond(resp);
+}
+
+RequestHandler* StaticContent::handle(Request* req) {
+	return new ContentHandler(req, resp);
 }
