@@ -8,9 +8,6 @@ find_package(PkgConfig REQUIRED)
 file(GLOB SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/database.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/database.hpp)
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-
 add_library(corecommon ${SRC})
 
 if (CMAKE_BUILD_TYPE MATCHES Debug)
@@ -28,17 +25,28 @@ if (graphics)
     include_directories(graphics)
     add_dependencies(graphics corecommon)
 
-    find_package(OpenGL REQUIRED)
-    find_package(Freetype REQUIRED)
-
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+    pkg_check_modules(FreeType2 REQUIRED IMPORTED_TARGET freetype2)
 
-    target_link_libraries(graphics PUBLIC PkgConfig::SDL2 Freetype::Freetype OpenGL::GL corecommon)
+    target_link_libraries(graphics PUBLIC PkgConfig::SDL2 PkgConfig::FreeType2 corecommon)
+
+    if (EMSCRIPTEN)
+        target_compile_definitions(graphics PUBLIC GLES)
+    else()
+#        find_package(OpenGL REQUIRED)
+#        target_link_libraries(graphics PUBLIC OpenGL::OpenGL)
+    endif()
 
     file(GLOB SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/**)
+
+    set(RAWSTRINGIFIER_PATH "${CMAKE_BINARY_DIR}/../build/rawstringifier")
+    if (NOT EXISTS ${RAWSTRINGIFIER_PATH})
+        execute_process(COMMAND clang++ ${CMAKE_CURRENT_SOURCE_DIR}/rawstringifier.cpp -o ${RAWSTRINGIFIER_PATH})
+    endif()
+
     foreach(SHADER ${SHADERS})
         get_filename_component(SHADER_NAME ${SHADER} NAME)
-        add_custom_target(${SHADER_NAME} COMMAND rawstringifier ${SHADER} > ${CMAKE_CURRENT_SOURCE_DIR}/graphics/include/${SHADER_NAME} DEPENDS ${SHADER})
+        add_custom_target(${SHADER_NAME} COMMAND ${RAWSTRINGIFIER_PATH} ${SHADER} > ${CMAKE_CURRENT_SOURCE_DIR}/graphics/include/${SHADER_NAME} DEPENDS ${SHADER} BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/graphics/include/${SHADER_NAME})
         add_dependencies(graphics ${SHADER_NAME})
     endforeach()
 endif()
@@ -54,13 +62,17 @@ if (server)
     find_library(LIBEVENT_PTHREADS libevent_pthreads.a)
     find_path(LIBEVENT_INCLUDE NAMES event2)
 
-    find_package(OpenSSL REQUIRED)
+    find_package(OpenSSL)
 
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
 
     target_link_libraries(server PUBLIC corecommon ${LIBEVENT} ${LIBEVENT_PTHREADS} ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
     target_include_directories(server PUBLIC ${OPENSSL_INCLUDE_DIR} ${LIBEVENT_INCLUDE})
+
+    add_executable(fileserver server/fileserver.cpp)
+    add_dependencies(fileserver server corecommon)
+    target_link_libraries(fileserver PUBLIC corecommon server)
 endif()
 
 foreach(TEST ${TESTS})

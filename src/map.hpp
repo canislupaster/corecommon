@@ -507,19 +507,19 @@ class Map {
 	};
 
 	Iterator begin() {
-		return {.c=0, .buckets=buckets, .iter=control_bytes.begin()};
+		return {.c=0, .iter=control_bytes.begin(), .buckets=buckets};
 	}
 
 	Iterator end() {
-		return {.c=buckets.size(), .buckets=buckets, .iter=control_bytes.end()};
+		return {.c=buckets.size(), .iter=control_bytes.end(), .buckets=buckets};
 	}
 
 	ConstIterator begin() const {
-		return {.c=0, .buckets=buckets, .iter=control_bytes.begin()};
+		return {.c=0, .iter=control_bytes.begin(), .buckets=buckets};
 	}
 
 	ConstIterator end() const {
-		return {.c=buckets.size(), .buckets=buckets, .iter=control_bytes.end()};
+		return {.c=buckets.size(), .iter=control_bytes.end(), .buckets=buckets};
 	}
 };
 

@@ -1,4 +1,4 @@
-#version 400 core
+//#version 400 core
 
 uniform object {
     mat4 space;

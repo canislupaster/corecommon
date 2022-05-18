@@ -1,4 +1,4 @@
-R"(#version 400 core
+R"(//#version 400 core
 
 layout(location=0) in vec3 position;
 layout(location=2) in vec2 texpos;

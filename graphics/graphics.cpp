@@ -1,3 +1,5 @@
+#include <new>
+
 #include "graphics.hpp"
 #include "arrayset.hpp"
 
@@ -28,9 +30,10 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) sdl_reporterr();
 
 	if (!(window = SDL_CreateWindow(
-					name, opts.x, opts.y, opts.w, opts.h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)))
+					name, opts.x, opts.y, opts.w, opts.h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN)))
 					sdl_reporterr();
 
+#ifndef GLES
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -38,19 +41,26 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
+#ifdef MULTISAMPLE
 	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
 	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+#endif
+#endif
 
 	if (!(ctx = SDL_GL_CreateContext(window))) sdl_reporterr();
-
-	SDL_GL_SetSwapInterval(opts.vsync ? 1 : 0);  // VSYNC
 
 	fps_ticks = SDL_GetPerformanceFrequency()/opts.fps;
 	last_swap = 0;
 
+#ifndef GLES
+	SDL_GL_SetSwapInterval(opts.vsync ? 1 : 0);  // VSYNC
+
 	// enable
+#ifdef MULTISAMPLE
 	glEnable(GL_MULTISAMPLE);
+#endif
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glEnable(GL_STENCIL_TEST);
@@ -58,9 +68,8 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	int w, h;
-	SDL_GetWindowSize(window, &w, &h);
-	bounds = {(float)w, (float)h};
+	SDL_SetWindowSize(window, opts.w, opts.h);
+	bounds = {(float)opts.w, (float)opts.h};
 
 	glGenFramebuffers(1, &tex_fbo);
 
@@ -87,26 +96,37 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	gl_checkerr();
 }
 
-void Window::swap() {
-	Uint64 tick = SDL_GetPerformanceCounter();
-	if (!opts.vsync && tick < fps_ticks + last_swap) {
-		SDL_Delay((1000*(fps_ticks + last_swap - tick))/SDL_GetPerformanceFrequency());
+void Window::clear() {
+	cleared = swapped;
+	if (in_use!=nullptr) use();
+
+	glViewport(0,0, static_cast<int>(bounds[0]),static_cast<int>(bounds[1]));
+	glClearColor(0,0,0,1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	gl_checkerr();
+}
+
+void Window::swap(bool delay) {
+	if (delay) {
+		Uint64 tick = SDL_GetPerformanceCounter();
+		if (!opts.vsync && tick < fps_ticks + last_swap) {
+			SDL_Delay((1000*(fps_ticks + last_swap - tick))/SDL_GetPerformanceFrequency());
+		}
 	}
 
 	last_swap = SDL_GetPerformanceCounter();
-	swapped = !swapped;
 
 	use();
 	glFinish();
 	SDL_GL_SwapWindow(window);
 	gl_checkerr();
 
-	glViewport(0,0, static_cast<int>(bounds[0]),static_cast<int>(bounds[1]));
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	swapped = !swapped;
 }
 
 Window::~Window() {
+//	if (!wrapper.moved) return;
+
 	SDL_GetWindowPosition(window, &opts.x, &opts.y);
 	SDL_GetWindowSize(window, &opts.w, &opts.h);
 
@@ -130,54 +150,59 @@ void Window::use() {
 		object_ubo->use(static_cast<GLint>(BlockIndices::Object));
 		in_use = nullptr;
 	}
+
+	if (cleared!=swapped) clear();
 }
 
 void Window::update_transform_camera(Mat4 const& trans, Mat4 const& cam) {
 	object_ubo->set_data(std::tuple(trans, cam));
 }
 
-Texture::Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, float* data, bool multisample): wind(wind), format(format), internalformat(internalformat), size(size), multisample(multisample) {
+#ifdef MULTISAMPLE
+Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool multisample): wind(wind), format(format), size(size), multisample(multisample) {
+#else
+Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool multisample): wind(wind), format(format), size(size) {
+#endif
 	glGenTextures(1, &idx);
 
-	if (!multisample) {
+#ifdef MULTISAMPLE
+	if (multisample) {
+		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, idx);
+		glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
+	} else {
+#endif
 		glBindTexture(GL_TEXTURE_2D, idx);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, internalformat, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, format, GL_FLOAT, data);
-	} else {
-		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, idx);
-		glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, internalformat, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
+		glTexImage2D(GL_TEXTURE_2D, 0, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, format.format, format.type, data);
+#ifdef MULTISAMPLE
 	}
+#endif
 
 	gl_checkerr();
 }
 
-GLint Texture::default_internalformat(GLenum format) {
-	switch (format) {
-		case GL_RGBA: return GL_RGBA8;
-		case GL_DEPTH_COMPONENT: return GL_DEPTH_COMPONENT32;
-		default: throw std::runtime_error("no default for texture format");
-	}
-}
+Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data):
+		Texture(wind, format, size, data, false) {}
+Texture::Texture(Window& wind, TexFormat format, Vec2 size, bool multisample):
+		Texture(wind, format, size, nullptr, multisample) {}
 
-Texture::Texture(Window& wind, GLenum format, Vec2 size, float* data):
-	Texture(wind, format, default_internalformat(format), size, data, false) {}
-Texture::Texture(Window& wind, GLenum format, Vec2 size, bool multisample):
-	Texture(wind, format, default_internalformat(format), size, nullptr, multisample) {}
-
-Texture::Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, float* data):
-		Texture(wind, format, internalformat, size, data, false) {}
-Texture::Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, bool multisample):
-		Texture(wind, format, internalformat, size, nullptr, multisample) {}
-
+#ifdef MULTISAMPLE
 Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, other.multisample) {
+#else
+Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, false) {
+#endif
 	other.proc(*wind.passthrough, *this, std::tuple(Mat3(1)));
 }
 
-Texture::Texture(Texture&& other): wind(other.wind), multisample(other.multisample), format(other.format), internalformat(other.internalformat), size(other.size), idx(other.idx) {
+#ifdef MULTISAMPLE
+Texture::Texture(Texture&& other): wind(other.wind), multisample(other.multisample), format(other.format), size(other.size), idx(other.idx) {
+#else
+Texture::Texture(Texture&& other): wind(other.wind), format(other.format), size(other.size), idx(other.idx) {
+#endif
 	other.idx=-1;
 }
 
@@ -186,7 +211,9 @@ Texture::~Texture() {
 }
 
 Layer::Layer(Window& wind, Vec2 size, Mat4 layer_trans, Mat4 cam, bool multisample):
-	wind(wind), cleared(!wind.swapped), size(size), depth(false), layer_transform(layer_trans), cam(cam), multisample(true), object_ubo() {
+		wind(wind), cleared(!wind.swapped), size(size), depth(false), layer_transform(layer_trans), cam(cam), object_ubo()
+#ifdef MULTISAMPLE
+	, multisample(multisample) {
 
 	if (multisample) {
 		glGenFramebuffers(1, &multisamp_fbo);
@@ -195,6 +222,9 @@ Layer::Layer(Window& wind, Vec2 size, Mat4 layer_trans, Mat4 cam, bool multisamp
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glCullFace(GL_BACK);
 	}
+#else
+	{
+#endif
 
 	glGenFramebuffers(1, &fbo);
 
@@ -212,9 +242,9 @@ Layer::Layer(Window& wind, Vec2 size, Mat4 layer_trans, Mat4 cam, bool multisamp
 Layer::Layer(Window& wind, Mat4 layer_trans, Mat4 cam, bool multisample):
 	Layer(wind, wind.bounds, layer_trans, cam, multisample) {}
 
-void Layer::add_channel(GLenum format, GLint internalformat) {
+void Layer::add_channel(TexFormat format) {
 	GLenum attach;
-	if (format==GL_DEPTH_COMPONENT) {
+	if (format.format==GL_DEPTH_COMPONENT) {
 		attach = GL_DEPTH_ATTACHMENT;
 		depth=true;
 	} else {
@@ -222,22 +252,24 @@ void Layer::add_channel(GLenum format, GLint internalformat) {
 		color_attachments.push_back(attach);
 	}
 
+#ifdef MULTISAMPLE
 	if (multisample) {
-		multisample_channels.emplace_back(wind, format, internalformat, size, true);
+		multisample_channels.emplace_back(wind, format, size, true);
 		glBindFramebuffer(GL_FRAMEBUFFER, multisamp_fbo);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, attach, GL_TEXTURE_2D_MULTISAMPLE, multisample_channels.back().idx, 0);
 
-		if (format!=GL_DEPTH_ATTACHMENT) {
+		if (attach!=GL_DEPTH_ATTACHMENT) {
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				throw std::runtime_error("framebuffer not complete");
 		}
 	}
+#endif
 
-	channels.emplace_back(wind, format, internalformat, size, false);
+	channels.emplace_back(wind, format, size, false);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, attach, GL_TEXTURE_2D, channels.back().idx, 0);
 
-	if (format!=GL_DEPTH_ATTACHMENT) {
+	if (attach!=GL_DEPTH_ATTACHMENT) {
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			throw std::runtime_error("framebuffer not complete");
 	}
@@ -245,10 +277,6 @@ void Layer::add_channel(GLenum format, GLint internalformat) {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	gl_checkerr();
-}
-
-void Layer::add_channel(GLenum format) {
-	add_channel(Texture::default_internalformat(format), format);
 }
 
 void Layer::update_transform_camera() {
@@ -270,8 +298,11 @@ void Layer::use() {
 
 		wind.in_use = this;
 
-		if (multisample) glBindFramebuffer(GL_FRAMEBUFFER, multisamp_fbo);
-		else glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+#ifdef MULTISAMPLE
+		if (multisample) glBindFramebuffer(GL_FRAMEBUFFER, multisamp_fbo); else
+#endif
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
 		object_ubo.use(static_cast<GLint>(BlockIndices::Object));
 
 		glDrawBuffers(color_attachments.size(), color_attachments.data());
@@ -283,34 +314,42 @@ void Layer::use() {
 }
 
 void Layer::update_size() {
+#ifdef MULTISAMPLE
 	for (auto& multisamp_chan: multisample_channels) {
 		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, multisamp_chan.idx);
-		glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, multisamp_chan.internalformat, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
+		glBindTexture(GL_TEXTURE_2D, multisamp_chan.idx);
+		glTexImage2D(GL_TEXTURE_2D, 0, multisamp_chan.format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, multisamp_chan.format.format, multisamp_chan.format.type, nullptr);
+		glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, multisamp_chan.format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
 	}
+#endif
 
 	for (auto& chan: channels) {
 		glBindTexture(GL_TEXTURE_2D, chan.idx);
-		glTexImage2D(GL_TEXTURE_2D, 0, chan.internalformat, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, chan.format, GL_FLOAT, nullptr);
+		glTexImage2D(GL_TEXTURE_2D, 0, chan.format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, chan.format.format, chan.format.type, nullptr);
 	}
 }
 
 void Layer::finish() {
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, multisamp_fbo);
+#ifdef MULTISAMPLE
+	if (multisample) {
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, multisamp_fbo);
 
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClearColor(0.0, 0.0, 0.0, 1.0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	for (GLenum attach: color_attachments) {
-		glReadBuffer(attach);
-		glDrawBuffer(attach);
+		for (GLenum attach: color_attachments) {
+			glReadBuffer(attach);
+			glDrawBuffers(1, (GLenum[]){attach});
 
-		glBlitFramebuffer(0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), 0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			glBlitFramebuffer(0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), 0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		}
+
+		if (depth) {
+			glBlitFramebuffer(0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), 0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+		}
 	}
-
-	if (depth) {
-		glBlitFramebuffer(0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), 0, 0, static_cast<int>(size[0]),static_cast<int>(size[1]), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-	}
+#endif
 
 	gl_checkerr();
 }
@@ -449,11 +488,11 @@ void Geometry::triangulate(Path const& path) {
 	std::vector<MonotonePolygon> stack;
 
 	//so i can copy-paste into geogebra 😜
-	std::cout<<std::endl;
-	for (Vec2 const& pt: p) {
-		std::cout << "(" << pt[0] << ", " << pt[1] << "), ";
-	}
-	std::cout<<std::endl;
+//	std::cout<<std::endl;
+//	for (Vec2 const& pt: p) {
+//		std::cout << "(" << pt[0] << ", " << pt[1] << "), ";
+//	}
+//	std::cout<<std::endl;
 
 	auto triangulate_monotone = [&](MonotonePolygon& poly){
 		auto iter = poly.left.rbegin();
@@ -905,6 +944,7 @@ void SVGObject::render(RenderTarget target) {
 	}
 }
 
+#ifndef GLES
 RenderToFile::RenderToFile(Window& wind, Vec2 size, unsigned fps, char const* file, Mat4 layer_trans, Mat4 cam, bool multisample):
 	Layer(wind, size, layer_trans, cam, multisample), fps(fps) {
 
@@ -931,3 +971,4 @@ void RenderToFile::render_channel(size_t i) {
 RenderToFile::~RenderToFile() {
 	pclose(ffmpeg);
 }
+#endif

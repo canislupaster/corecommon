@@ -3,9 +3,14 @@
 
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <limits>
 #include <vector>
 #include <optional>
+
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#endif
 
 template<class T>
 struct ConstReverseIterator {
@@ -255,6 +260,28 @@ class VarIntRef {
 };
 
 std::string read_file(const char* path);
+
+#ifdef EMSCRIPTEN
+static std::string html_local_get(char const* name) {
+	char* str = reinterpret_cast<char*>(MAIN_THREAD_EM_ASM_INT({
+		let v = window.localStorage.getItem(UTF8ToString($0));
+		if (v==null) return 0;
+
+		let len = lengthBytesUTF8(v)+1;
+		let buf = _malloc(len);
+		stringToUTF8(v, buf, len);
+		return buf;
+	}, name));
+
+	std::string cpy(str);
+	free(str);
+	return cpy;
+}
+
+static void html_local_set(char const* name, char const* val) {
+	MAIN_THREAD_EM_ASM((window.localStorage.setItem(UTF8ToString($0), UTF8ToString($1));), name, val);
+}
+#endif
 
 unsigned gcd(unsigned a, unsigned b);
 unsigned lcm(unsigned a, unsigned b);

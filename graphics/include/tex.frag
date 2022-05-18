@@ -1,4 +1,5 @@
-R"(#version 400 core
+R"(//#version 400 core
+precision mediump float;
 
 uniform sampler2D tex;
 

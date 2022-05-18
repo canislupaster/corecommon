@@ -3,6 +3,7 @@
 
 #include <utility>
 #include <variant>
+#include <stdio.h>
 #include <chrono>
 #include <thread>
 
@@ -94,10 +95,10 @@ struct RequestContent {
 struct Response {
 	int status;
 	std::vector<std::pair<std::string, Header>> headers;
-	std::optional<MaybeOwnedSlice<const char>> content;
+	std::variant<FILE*, MaybeOwnedSlice<const char>, std::monostate> content;
 
 	static Response html(char const* html) {
-		return {.status=200, .headers={std::make_pair("Content-Type", Header {.val="text/html"})}, .content=std::make_optional(MaybeOwnedSlice(html, strlen(html), false))};
+		return {.status=200, .headers={std::make_pair("Content-Type", Header {.val="text/html"})}, .content=decltype(Response::content)(MaybeOwnedSlice(html, strlen(html), false))};
 	}
 };
 
@@ -107,20 +108,22 @@ struct Request {
 	Method method;
 	Map<std::string, Header> headers;
 	bool read_content = false;
+	bool to_close = false;
+	bool closed=false;
 
 	struct bufferevent* bev;
 	WebServer& serv;
 
 	void handle(RequestHandlerFactory* factory);
+	void close();
 	void respond(Response const& resp);
 	~Request();
 
  private:
 	std::unique_ptr<RequestContent> content;
+	std::unique_ptr<RequestHandler> req_handler;
 
 	Request(WebServer& serv, struct bufferevent* bev);
-
-	std::unique_ptr<RequestHandler> req_handler;
 
 	enum class ParsingState {
 		RequestLine,
@@ -131,7 +134,9 @@ struct Request {
 
 	ParsingState pstate;
 
-	static void readcb(struct bufferevent* formdata, void* data);
+	void parse_err();
+	static void readcb(struct bufferevent* bev, void* data);
+	static void writecb(struct bufferevent* bev, void* data);
 	static void eventcb(struct bufferevent* bev, short events, void* data);
 
 	friend class WebServer;
@@ -152,9 +157,7 @@ class RequestHandler {
 		delete req;
 	}
 
-	virtual void request_close() {
-		delete req;
-	}
+	virtual void request_close() {}
 
 	virtual ~RequestHandler() {}
 

@@ -116,7 +116,7 @@ struct Vector {
 			}
 		}
 
-		return std::optional(Intersection {.pos=x1, .c1=0, .c2=0});
+		return std::optional(Intersection {.c1=0, .c2=0, .pos=x1});
 	}
 
 	RetType& operator*=(Vector const& other) {

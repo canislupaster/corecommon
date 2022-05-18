@@ -3,7 +3,13 @@
 
 #define GL_SILENCE_DEPRECATION
 #include <SDL.h>
+#ifdef GLES
+#include "GLES3/gl32.h"
+#else
 #include "OpenGL/gl3.h"
+#endif
+
+#define MULTISAMPLE
 
 #include <iostream>
 #include <fstream>
@@ -36,7 +42,15 @@ struct VertFragShader {
 	GLuint idx;
 
 	explicit VertFragShader(const char* src): idx(glCreateShader(is_frag ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER)) {
-		glShaderSource(idx, 1, (const GLchar* const*)&src, nullptr);
+		std::string src_cpy(src);
+#if GLES
+		src_cpy.insert(0, "#version 300 es\n");
+#else
+		src_cpy.insert(0, "#version 400 core\n");
+#endif
+
+		const char* src_cpy_ref = src_cpy.c_str();
+		glShaderSource(idx, 1, (const GLchar* const*)&src_cpy_ref, nullptr);
 		glCompileShader(idx);
 
 		int succ;
@@ -45,7 +59,7 @@ struct VertFragShader {
 		glGetShaderiv(idx, GL_COMPILE_STATUS, &succ);
 		if (!succ) {
 			glGetShaderInfoLog(idx, 1024, nullptr, err.data());
-			throw GLException(err);
+			throw GLException((std::stringstream() << "error compiling shader src\n" << src_cpy << "\nerror:\n" << err).str());
 		}
 	}
 
@@ -253,15 +267,28 @@ struct Layer;
 
 using RenderTarget = std::variant<std::reference_wrapper<Window>, std::reference_wrapper<Layer>>;
 
+struct TexFormat {
+	GLenum format, internal, type;
+
+	static TexFormat rgba8() {
+		return TexFormat {.format=GL_RGBA, .internal=GL_RGBA8, .type=GL_UNSIGNED_BYTE};
+	}
+
+	static TexFormat depth32() {
+		return TexFormat {.format=GL_DEPTH_COMPONENT, .internal=GL_DEPTH_COMPONENT32F, .type=GL_FLOAT};
+	}
+};
+
 class Texture {
  private:
-	Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, float* data, bool multisample);
+	Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool multisample);
 
  public:
 	GLuint idx;
+#ifdef MULTISAMPLE
 	bool multisample;
-	GLint internalformat;
-	GLenum format;
+#endif
+	TexFormat format;
 
 	Vec2 size;
 
@@ -273,12 +300,10 @@ class Texture {
 	template<class TexShader>
 	void render(RenderTarget layer, TexShader const& shad, typename TexShader::Tuple const& params) const;
 
-	static GLint default_internalformat(GLenum format);
-
-	Texture(Window& wind, GLenum format, Vec2 size, float* data);
-	Texture(Window& wind, GLenum format, Vec2 size, bool multisample=false);
-	Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, float* data);
-	Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, bool multisample=false);
+	Texture(Window& wind, TexFormat format, Vec2 size, float* data);
+	Texture(Window& wind, TexFormat format, Vec2 size, bool multisample=false);
+//	Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, float* data);
+//	Texture(Window& wind, GLenum format, GLint internalformat, Vec2 size, bool multisample=false);
 	Texture(Texture const& other);
 	Texture(Texture&& other);
 	~Texture();
@@ -295,7 +320,11 @@ struct TexShader: public Shader<Uniforms...> {
 		Shader<Uniforms...>::use(uniforms);
 
 		glActiveTexture(GL_TEXTURE0);
+#ifdef MULTISAMPLE
 		glBindTexture(texture.multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, texture.idx);
+#else
+		glBindTexture(GL_TEXTURE_2D, texture.idx);
+#endif
 		glUniform1i(tex, 0);
 	}
 };
@@ -380,10 +409,21 @@ struct Geometry {
 	void render_stencil() const;
 };
 
+struct Wrapper {
+	bool moved=false;
+
+	Wrapper() {}
+
+	Wrapper(Wrapper&& other): moved(other.moved) {
+		other.moved=true;
+	}
+};
+
 class Window {
  public:
-	const char* name;
 	SDL_Window* window;
+	const char* name;
+
 	SDL_GLContext ctx;
 
 	Vec2 bounds;
@@ -403,7 +443,11 @@ class Window {
 
 		bool load(const char* fname) {
 			try {
+#ifdef EMSCRIPTEN
+				cfg.parse(html_local_get(fname));
+#else
 				cfg.parse(read_file(fname));
+#endif
 			} catch (std::exception const& e) {
 				return false;
 			}
@@ -424,9 +468,13 @@ class Window {
 		}
 
 		void save(const char* fname) const {
+#ifdef EMSCRIPTEN
+			html_local_set(fname, cfg.save().str().c_str());
+#else
 			std::ofstream f;
 			f.open(fname);
 			f << cfg.save().rdbuf();
+#endif
 		}
 	};
 
@@ -441,19 +489,23 @@ class Window {
 	Layer* in_use;
 
 	bool swapped;
+	bool cleared;
 
 	void use();
 
 	void update_transform_camera(Mat4 const& transform, Mat4 const& cam);
 
 	Window(const char* name, Options& opts);
+//	Window(Window&& other) = default;
 	Window(Window const& other) = delete;
-	void swap();
+	void clear();
+	void swap(bool delay);
 	~Window();
 
  private:
 	long fps_ticks;
 	long last_swap;
+//	Wrapper wrapper;
 };
 
 template<class TexShader>
@@ -461,7 +513,14 @@ void Texture::proc(TexShader const& shad, Texture& out, typename TexShader::Tupl
 	glBindFramebuffer(GL_FRAMEBUFFER, wind.tex_fbo);
 	glViewport(0,0,static_cast<int>(out.size[0]),static_cast<int>(out.size[1]));
 
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, out.multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, out.idx, 0);
+
+	GLenum target =
+#ifdef MULTISAMPLE
+	out.multisample ? GL_TEXTURE_2D_MULTISAMPLE :
+#endif
+	GL_TEXTURE_2D;
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, out.idx, 0);
 	gl_checkerr();
 
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -481,12 +540,14 @@ struct Layer {
 	Mat4 cam;
 	UniformBuffer<Mat4, Mat4> object_ubo;
 
-	bool multisample;
 	GLuint multisamp_fbo;
 	GLuint fbo;
 
 	//if multisampling, textures are rendered here and blitted onto the other vector
+#ifdef MULTISAMPLE
+	bool multisample;
 	std::vector<Texture> multisample_channels;
+#endif
 	std::vector<Texture> channels;
 
 	std::vector<GLenum> color_attachments;
@@ -500,9 +561,9 @@ struct Layer {
 
 	Layer(Window& wind, Vec2 size, Mat4 layer_trans, Mat4 cam, bool multisample=true);
 	Layer(Window& wind, Mat4 layer_trans, Mat4 cam, bool multisample=true);
+	Layer(Layer&& other) = default;
 	Layer(Layer const& other) = delete;
-	void add_channel(GLenum format, GLint internalformat);
-	void add_channel(GLenum format);
+	void add_channel(TexFormat format);
 	void clear();
 	Texture& channel(size_t i);
 	void update_transform_camera();
@@ -542,6 +603,7 @@ struct SVGObject {
 	void render(RenderTarget target);
 };
 
+#ifndef GLES
 struct RenderToFile: public Layer {
 	FILE* ffmpeg;
 	std::vector<unsigned char> buf;
@@ -552,5 +614,6 @@ struct RenderToFile: public Layer {
 	void render_channel(size_t i);
 	~RenderToFile();
 };
+#endif
 
 #endif //SRC_GL_HPP_

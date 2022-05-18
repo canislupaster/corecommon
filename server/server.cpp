@@ -32,7 +32,7 @@ void WebServer::accept(struct evconnlistener* listener, int fd, struct sockaddr*
 	req->mtx.lock();
 	bufferevent_enable(req->bev, EV_READ | EV_WRITE);
 
-	bufferevent_setcb(req->bev, &Request::readcb, nullptr, &Request::eventcb, static_cast<void*>(req));
+	bufferevent_setcb(req->bev, &Request::readcb, &Request::writecb, &Request::eventcb, static_cast<void*>(req));
 
 	struct timeval tout = {.tv_sec=serv->timeout.count(), .tv_usec=0};
 	bufferevent_set_timeouts(req->bev, &tout, nullptr);
@@ -123,6 +123,11 @@ Parser<std::pair<std::string, Header>> parse_header(Parser<Unit> const& parser) 
 	})).run(parser);
 }
 
+void Request::parse_err() {
+	req_handler->request_parse_err();
+	delete this;
+}
+
 void Request::readcb(struct bufferevent* bev, void* data) {
 	auto req = static_cast<Request*>(data);
 	req->mtx.lock();
@@ -133,19 +138,19 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 	} else if (req->pstate == ParsingState::Content) {
 		size_t len = evbuffer_get_length(evbuf);
 		if (len > req->content->content_length) {
-			req->req_handler->request_parse_err();
+			req->parse_err();
 			return;
 		} else if (len == req->content->content_length) {
 			std::unique_ptr<char[]> content = std::make_unique<char[]>(len+1);
 			if (evbuffer_remove(evbuf, content.get(), req->content->content_length)==-1) {
-				req->req_handler->request_parse_err();
+				req->parse_err();
 				return;
 			}
 
 			//handle supported formats
 			Header* ctype = req->headers["Content-Type"];
 			if (!ctype) {
-				req->req_handler->request_parse_err();
+				req->parse_err();
 				return;
 			} else if (ctype->val=="application/x-www-form-urlencoded") {
 				if (req->read_content) {
@@ -162,7 +167,7 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 			} else if (ctype->val=="multipart/form-data") {
 				auto ctype_iter = std::find_if(ctype->extra.begin(), ctype->extra.end(), [](auto x){return x.first=="boundary";});
 				if (ctype_iter==ctype->extra.end()) {
-					req->req_handler->request_parse_err();
+					req->parse_err();
 					return;
 				}
 
@@ -199,13 +204,13 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 				}))).run(x);
 
 				if (parsed.err) {
-					req->req_handler->request_parse_err();
+					req->parse_err();
 					return;
 				}
 
 				req->req_handler->on_content_recv();
 			} else {
-				req->req_handler->request_parse_err();
+				req->parse_err();
 				return;
 			}
 
@@ -226,7 +231,7 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 							|| (Match("HEAD") + ResultMap<Unit, Method>([](auto x) {return Method::HEAD;}))).run(parser);
 
 					 if (method.err) {
-							req->req_handler->request_parse_err();
+							req->parse_err();
 							return;
 					 }
 
@@ -273,7 +278,7 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 					auto hdr = parse_header(parser);
 
 					if (hdr.err) {
-						req->req_handler->request_parse_err();
+						req->parse_err();
 						return;
 					}
 
@@ -289,13 +294,43 @@ void Request::readcb(struct bufferevent* bev, void* data) {
 	req->mtx.unlock();
 }
 
+void Request::writecb(struct bufferevent* bev, void* data) {
+	auto req = static_cast<Request*>(data);
+	req->mtx.lock();
+
+	if (req->to_close && !req->closed && bufferevent_flush(req->bev, EV_WRITE, BEV_FLUSH)!=1) {
+		req->closed=true;
+		req->close();
+	}
+
+	req->mtx.unlock();
+}
+
+void Request::close() {
+	req_handler->request_close();
+
+	bufferevent_disable(bev, EV_READ);
+	//just in case
+	bufferevent_free(bev);
+}
+
 void Request::respond(Response const& resp) {
+	if (to_close) return;
+	to_close=true;
+
 	struct evbuffer* evbuf = bufferevent_get_output(bev);
 	evbuffer_add_printf(evbuf, "HTTP/1.1 %i %s\r\n", resp.status, reason(resp.status));
 
-	if (resp.content) {
-		evbuffer_add_printf(evbuf, "Content-Length: %lu\r\n", resp.content->size());
-	}
+	std::visit(overloaded {
+		[&](MaybeOwnedSlice<const char> const& slice){
+			evbuffer_add_printf(evbuf, "Content-Length: %lu\r\n", slice.size());
+		},
+		[&](FILE* file) {
+			fseek(file, 0, SEEK_END);
+			evbuffer_add_printf(evbuf, "Content-Length: %lu\r\n", static_cast<unsigned long>(ftell(file)));
+		},
+		[](auto x){}
+	}, resp.content);
 
 	for (auto const& hdr: resp.headers) {
 		evbuffer_add_printf(evbuf, "%s:%s", hdr.first.c_str(), hdr.second.val.c_str());
@@ -308,9 +343,19 @@ void Request::respond(Response const& resp) {
 
 	evbuffer_add_printf(evbuf, "\r\n");
 
-	if (resp.content) {
-		evbuffer_add(evbuf, resp.content->data, resp.content->size());
-	}
+	std::visit(overloaded {
+			[&](MaybeOwnedSlice<const char> const& slice){
+				evbuffer_add(evbuf, slice.data, slice.size());
+			},
+			[&](FILE* file) {
+				unsigned long len = ftell(file);
+				fseek(file, 0, SEEK_SET);
+				evbuffer_add_file(evbuf, fileno(file), 0, len);
+			},
+			[](std::monostate x){}
+	}, resp.content);
+
+	bufferevent_flush(bev, EV_WRITE, BEV_FLUSH);
 }
 
 void Request::eventcb(struct bufferevent* bev, short events, void* data) {
@@ -319,7 +364,9 @@ void Request::eventcb(struct bufferevent* bev, short events, void* data) {
 	req->mtx.lock();
 
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		req->req_handler->request_close();
+		req->close();
+		delete req;
+		return;
 	}
 
 	req->mtx.unlock();
@@ -330,9 +377,7 @@ void Request::handle(RequestHandlerFactory* factory) {
 }
 
 Request::~Request() {
-	bufferevent_disable(bev, EV_READ);
-	//just in case
-	bufferevent_free(bev);
+	if (!closed) close();
 }
 
 void Router::RouterRequestHandler::on_segment_recv(std::string const& seg) {
@@ -353,3 +398,4 @@ StaticContent::ContentHandler::ContentHandler(Request* req, Response const& resp
 RequestHandler* StaticContent::handle(Request* req) {
 	return new ContentHandler(req, resp);
 }
+
