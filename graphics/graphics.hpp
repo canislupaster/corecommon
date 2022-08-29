@@ -285,7 +285,7 @@ class Texture {
 
  public:
 	GLuint idx;
-#ifdef MULTISAMPLE
+#ifndef GLES
 	bool multisample;
 #endif
 	TexFormat format;
@@ -320,7 +320,7 @@ struct TexShader: public Shader<Uniforms...> {
 		Shader<Uniforms...>::use(uniforms);
 
 		glActiveTexture(GL_TEXTURE0);
-#ifdef MULTISAMPLE
+#ifndef GLES
 		glBindTexture(texture.multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, texture.idx);
 #else
 		glBindTexture(GL_TEXTURE_2D, texture.idx);
@@ -376,6 +376,7 @@ struct Path {
 	void cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res);
 	//merges other path into this path
 	void merge(Path const& other);
+	void split(size_t part, GLuint i1, GLuint i2);
 	//expands path to stroke_width, sets fill=true and stroke_width=0
 	Path stroke() const;
 
@@ -384,7 +385,7 @@ struct Path {
 	GLuint prev(std::vector<GLuint>::const_iterator part, GLuint i) const;
 
  private:
-	void stroke_side(Path& expanded, bool cw) const;
+	void stroke_side(size_t part, Path& expanded, bool cw) const;
 };
 
 struct Geometry {
@@ -500,6 +501,7 @@ class Window {
 	Window(Window const& other) = delete;
 	void clear();
 	void swap(bool delay);
+	void delay();
 	~Window();
 
  private:
@@ -515,7 +517,7 @@ void Texture::proc(TexShader const& shad, Texture& out, typename TexShader::Tupl
 
 
 	GLenum target =
-#ifdef MULTISAMPLE
+#ifndef GLES
 	out.multisample ? GL_TEXTURE_2D_MULTISAMPLE :
 #endif
 	GL_TEXTURE_2D;
@@ -546,7 +548,7 @@ struct Layer {
 	//if multisampling, textures are rendered here and blitted onto the other vector
 #ifdef MULTISAMPLE
 	bool multisample;
-	std::vector<Texture> multisample_channels;
+	std::vector<GLuint> multisample_renderbufs;
 #endif
 	std::vector<Texture> channels;
 

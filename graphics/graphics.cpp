@@ -2,6 +2,7 @@
 
 #include "graphics.hpp"
 #include "arrayset.hpp"
+#include "btree.hpp"
 
 #include <algorithm>
 
@@ -106,15 +107,17 @@ void Window::clear() {
 	gl_checkerr();
 }
 
-void Window::swap(bool delay) {
-	if (delay) {
-		Uint64 tick = SDL_GetPerformanceCounter();
-		if (!opts.vsync && tick < fps_ticks + last_swap) {
-			SDL_Delay((1000*(fps_ticks + last_swap - tick))/SDL_GetPerformanceFrequency());
-		}
+void Window::delay() {
+	Uint64 tick = SDL_GetPerformanceCounter();
+	if (!opts.vsync && tick < fps_ticks + last_swap) {
+		SDL_Delay((1000*(fps_ticks + last_swap - tick))/SDL_GetPerformanceFrequency());
 	}
 
 	last_swap = SDL_GetPerformanceCounter();
+}
+
+void Window::swap(bool do_delay) {
+	if (do_delay) delay();
 
 	use();
 	glFinish();
@@ -158,17 +161,17 @@ void Window::update_transform_camera(Mat4 const& trans, Mat4 const& cam) {
 	object_ubo->set_data(std::tuple(trans, cam));
 }
 
-#ifdef MULTISAMPLE
+#ifndef GLES
 Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool multisample): wind(wind), format(format), size(size), multisample(multisample) {
 #else
 Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool multisample): wind(wind), format(format), size(size) {
 #endif
 	glGenTextures(1, &idx);
 
-#ifdef MULTISAMPLE
+#ifndef GLES
 	if (multisample) {
 		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, idx);
-		glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
+		glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
 	} else {
 #endif
 		glBindTexture(GL_TEXTURE_2D, idx);
@@ -178,7 +181,7 @@ Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data, bool mu
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 		glTexImage2D(GL_TEXTURE_2D, 0, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, format.format, format.type, data);
-#ifdef MULTISAMPLE
+#ifndef GLES
 	}
 #endif
 
@@ -190,7 +193,7 @@ Texture::Texture(Window& wind, TexFormat format, Vec2 size, float* data):
 Texture::Texture(Window& wind, TexFormat format, Vec2 size, bool multisample):
 		Texture(wind, format, size, nullptr, multisample) {}
 
-#ifdef MULTISAMPLE
+#ifndef GLES
 Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, other.multisample) {
 #else
 Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, false) {
@@ -198,7 +201,7 @@ Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.
 	other.proc(*wind.passthrough, *this, std::tuple(Mat3(1)));
 }
 
-#ifdef MULTISAMPLE
+#ifndef GLES
 Texture::Texture(Texture&& other): wind(other.wind), multisample(other.multisample), format(other.format), size(other.size), idx(other.idx) {
 #else
 Texture::Texture(Texture&& other): wind(other.wind), format(other.format), size(other.size), idx(other.idx) {
@@ -254,9 +257,14 @@ void Layer::add_channel(TexFormat format) {
 
 #ifdef MULTISAMPLE
 	if (multisample) {
-		multisample_channels.emplace_back(wind, format, size, true);
+		GLuint renderbuf;
+		glGenRenderbuffers(1, &renderbuf);
+		glBindRenderbuffer(GL_RENDERBUFFER, renderbuf);
+		multisample_renderbufs.push_back(renderbuf);
+		glRenderbufferStorageMultisample(GL_RENDERBUFFER, wind.opts.samples, format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]));
+
 		glBindFramebuffer(GL_FRAMEBUFFER, multisamp_fbo);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, attach, GL_TEXTURE_2D_MULTISAMPLE, multisample_channels.back().idx, 0);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, attach, GL_RENDERBUFFER, renderbuf);
 
 		if (attach!=GL_DEPTH_ATTACHMENT) {
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -315,11 +323,9 @@ void Layer::use() {
 
 void Layer::update_size() {
 #ifdef MULTISAMPLE
-	for (auto& multisamp_chan: multisample_channels) {
-		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, multisamp_chan.idx);
-		glBindTexture(GL_TEXTURE_2D, multisamp_chan.idx);
-		glTexImage2D(GL_TEXTURE_2D, 0, multisamp_chan.format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), 0, multisamp_chan.format.format, multisamp_chan.format.type, nullptr);
-		glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, wind.opts.samples, multisamp_chan.format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]), GL_FALSE);
+	for (unsigned i=0; i<channels.size(); i++) {
+		glBindRenderbuffer(GL_RENDERBUFFER, multisample_renderbufs[i]);
+		glRenderbufferStorageMultisample(GL_RENDERBUFFER, wind.opts.samples, channels[i].format.internal, static_cast<int>(size[0]), static_cast<int>(size[1]));
 	}
 #endif
 
@@ -459,11 +465,30 @@ struct MonotonePolygon {
 	std::unique_ptr<MonotonePolygon> merging;
 };
 
+struct SweepEdge {
+	bool left;
+	GLuint from;
+	GLuint to;
+
+	std::unique_ptr<MonotonePolygon> poly;
+	Node<float, SweepEdge>* other;
+};
+
+using EdgeNode = Node<float, SweepEdge>;
+
 void Geometry::triangulate(Path const& path) {
 	Path stroked;
 	if (!path.fill) stroked = path.stroke();
 	Path const& path_ref = path.fill ? path : stroked;
 	std::vector<Vec2> const& p = path_ref.points;
+
+	auto elem_offset = static_cast<GLuint>(vertices.size());
+
+	vertices.reserve(vertices.size()+p.size());
+
+	for (Vec2 const& point: p) {
+		vertices.push_back(Vertex {.pos=Vec3({point[0], point[1], 0}), .normal={0,0,1}});
+	}
 
 	std::vector<GLuint> sorted;
 	sorted.reserve(p.size());
@@ -474,25 +499,18 @@ void Geometry::triangulate(Path const& path) {
 
 	std::sort(sorted.begin(), sorted.end(), [&](GLuint const& i1, GLuint const& i2){
 		return (p[i1][1] > p[i2][1])
-			|| (p[i1][1]==p[i2][1] && p[i1][0] > p[i2][0]);
+				|| (p[i1][1]==p[i2][1] && p[i1][0] > p[i2][0]);
 	});
 
-	auto elem_offset = static_cast<GLuint>(vertices.size());
-	vertices.reserve(vertices.size()+p.size());
-
-	for (Vec2 const& point: p) {
-		vertices.push_back(Vertex {.pos=Vec3({point[0], point[1], 0}), .normal={0,0,1}});
-	}
-
-	std::vector<std::pair<GLuint, GLuint>> sweep;
-	std::vector<MonotonePolygon> stack;
+	EdgeNode::Root edges;
+	EdgeNode::Root edges_new;
 
 	//so i can copy-paste into geogebra 😜
-//	std::cout<<std::endl;
-//	for (Vec2 const& pt: p) {
-//		std::cout << "(" << pt[0] << ", " << pt[1] << "), ";
-//	}
-//	std::cout<<std::endl;
+	std::cout<<std::endl;
+	for (Vec2 const& pt: p) {
+		std::cout << "(" << pt[0] << ", " << pt[1] << "), ";
+	}
+	std::cout<<std::endl;
 
 	auto triangulate_monotone = [&](MonotonePolygon& poly){
 		auto iter = poly.left.rbegin();
@@ -566,61 +584,115 @@ void Geometry::triangulate(Path const& path) {
 		}
 	};
 
+	auto get_poly = [&](auto edge) {
+		return stack.begin() + std::count(sweep_parity.begin(), sweep_parity.begin()+(edge-sweep.begin())+1, false)-1;
+	};
+
+	//hmm if we are generous in splitting polygons then those which werent meant to be split will be safely merged? i hope god fucking damnit
+	auto get_poly_containing = [&](auto edge) {
+
+	};
+
+	auto getx = [&](SweepEdge& edge, float y) -> float {
+		if (y==p[edge.from][1]) return p[edge.from][0];
+		else if (y==p[edge.to][1]) return p[edge.to][0];
+
+		float dy = p[edge.from][1]-p[edge.to][1];
+		return dy==0 ? p[edge.to][0] : p[edge.from][0]+(p[edge.to][0]-p[edge.from][0])*(p[edge.from][1]-y)/dy;
+	};
+
 	for (size_t i=0; i<sorted.size(); i++) {
 		auto part = path_ref.part(sorted[i]);
 		std::array<GLuint, 2> adj = {path_ref.prev(part, sorted[i]), path_ref.next(part, sorted[i])};
 
-		if ((p[adj[0]]-p[sorted[i]]).abs()<Epsilon) continue;
+//		if ((p[adj[0]]-p[sorted[i]]).abs()<Epsilon) continue;
 
-		std::vector<std::pair<GLuint, GLuint>>::iterator edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == sorted[i];});
+		int v=0;
+		for (EdgeNode& edge: edges) {
+			if (edge.v.left) {
+				v++;
+				std::cout << "(";
+			} else {
+				v--;
+				std::cout << ")";
+			}
 
-		while ((p[adj[1]]-p[sorted[i]]).abs()<Epsilon) {
-			auto new_edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == adj[1];});
-			if (new_edge<edge) edge=new_edge;
-			adj[1]=path_ref.next(part, adj[1]);
+			assert(v>=0);
+
+			float new_k = getx(edge.v, p[sorted[i]][1]);
+			SweepEdge cpy(std::move(edge.v));
+			edges_new.insert(static_cast<float&&>(new_k), std::move(cpy));
 		}
+
+		std::swap(edges, edges_new);
+
+		assert(v==0);
+		std::cout << std::endl;
+
+		std::cout << " -> ";
+		for (EdgeNode& edge: edges) {
+			if (edge.v.left) {
+				v++;
+				std::cout << "(";
+			} else {
+				v--;
+				std::cout << ")";
+			}
+
+			assert(v>=0);
+		}
+
+		assert(v==0);
+		std::cout << std::endl;
+
+		EdgeNode* edge = edges.find(p[sorted[i]][0]);
+
+//		for (unsigned idx=sorted[i]; (p[adj[1]]-p[idx]).abs()<Epsilon;) {
+//			auto new_edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == adj[1];});
+//			if (new_edge<edge) edge=new_edge;
+//
+//			idx=adj[1];
+//			adj[1]=path_ref.next(part, adj[1]);
+//		}
 
 		if (adj[1]==adj[0]) continue; //sanity check, in case not a triangle i guess
 
 		bool l1 = p[adj[0]][1] < p[sorted[i]][1] || (p[adj[0]][1]==p[sorted[i]][1] && p[adj[0]][0] < p[sorted[i]][0]);
 		bool l2 = p[adj[1]][1] < p[sorted[i]][1] || (p[adj[1]][1]==p[sorted[i]][1] && p[adj[1]][0] < p[sorted[i]][0]);
 
-		auto merge_poly = [&](std::vector<MonotonePolygon>::iterator poly){
+		auto merge_poly = [&](EdgeNode::Iterator edge){
+			auto& poly = edge.current->v.poly;
+
 			if (adj[0]==poly->left.back() || adj[1]==poly->left.back()) {
 				poly->left.push_back(sorted[i]);
 				//poly->right.push_back(sorted[i]);
 				triangulate_monotone(*poly);
 
-				MonotonePolygon* merging = poly->merging.release();
-				merging->left.push_back(sorted[i]);
-				auto ins = stack.insert(stack.erase(poly), std::move(*merging));
-				delete merging;
-
-				return ins;
+				poly.swap(poly->merging);
+				poly->left.push_back(sorted[i]);
 			} else if (adj[0]==poly->merging->right.back() || adj[1]==poly->merging->right.back()) {
 				poly->merging->right.push_back(sorted[i]);
 				poly->right.push_back(sorted[i]);
 
 				triangulate_monotone(*poly->merging);
-
-				poly->merging.reset();
 			}
 
-			return poly;
+			poly->merging.reset();
+
+			return poly.get();
 		};
 
-		if (edge==sweep.end()) {
-			auto sweep_pos = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x) {
-				float big_dy = p[x.first][1]-p[x.second][1];
-				float dy = big_dy==0 ? 0 : (p[x.first][1]-p[sorted[i]][1])/big_dy;
-				return p[sorted[i]][0]>=p[x.first][0] + dy*(p[x.second][0]-p[x.first][0]);
-			});
-
+		if (!edge) {
 			bool swap = p[adj[1]][1]==p[adj[0]][1] ? p[adj[0]][0] < p[adj[1]][0] : (p[adj[0]]-p[sorted[i]]).determinant(p[adj[1]]-p[sorted[i]])>0;
 
 			//split/new
-			if ((sweep_pos-sweep.begin()) % 2 == 1) {
-				auto poly = stack.begin() + (sweep_pos-sweep.begin())/2;
+			bool par = sweep_pos!=sweep.begin() && !sweep_parity[sweep_pos-sweep.begin()-1];
+			auto par_first = sweep_parity.emplace(sweep_parity.begin()+(sweep_pos-sweep.begin()), par);
+			sweep_parity.emplace(par_first+1, !par);
+
+			MonotonePolygon* poly;
+			if (par) {
+				auto poly = get_poly(sweep_pos);
 
 				if (poly->merging) {
 					poly->right.push_back(sorted[i]);
@@ -640,27 +712,29 @@ void Geometry::triangulate(Path const& path) {
 					stack.insert(poly+1, std::move(new_poly));
 				}
 			} else {
-				stack.emplace(stack.begin()+(sweep_pos-sweep.begin())/2, MonotonePolygon {.left={sorted[i]}, .right={sorted[i]}});
+				poly = new MonotonePolygon {.left={sorted[i]}, .right={sorted[i]}};
 			}
 
 			auto first = sweep.emplace(sweep_pos, sorted[i], swap ? adj[1] : adj[0]);
 			sweep.emplace(first+1, sorted[i], swap ? adj[0] : adj[1]);
+			edges.insert(static_cast<float&&>(p[sorted[i]][0]), )
 		} else if (l1 || l2) {
-			auto poly = stack.begin() + (edge-sweep.begin())/2;
+			auto poly = get_poly(edge);
+
 			if (poly->merging) {
 				merge_poly(poly);
-			} else if ((edge-sweep.begin()) % 2 == 1) {
+			} else if (sweep_parity[edge-sweep.begin()]) {
 				poly->right.push_back(sorted[i]);
-			} else if ((edge-sweep.begin()) % 2 == 0) {
+			} else {
 				poly->left.push_back(sorted[i]);
 			}
 
 			if (l1) *edge = std::pair(sorted[i], adj[0]);
 			else *edge = std::pair(sorted[i], adj[1]);
 		} else {
-			auto poly = stack.begin() + (edge-sweep.begin())/2;
+			auto poly = get_poly(edge);
 
-			if ((edge-sweep.begin()) % 2 == 1) {
+			if (sweep_parity[edge-sweep.begin()]) {
 				if (poly->merging) poly = merge_poly(poly);
 				else poly->right.push_back(sorted[i]);
 
@@ -683,8 +757,37 @@ void Geometry::triangulate(Path const& path) {
 				stack.erase(poly);
 			}
 
-			sweep.erase(sweep.erase(edge));
+			bool par1 = sweep_parity[edge-sweep.begin()];
+			auto other = std::find_if(edge+1, sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == sorted[i];});
+			unsigned diff = other-edge;
+			assert(diff==1);
+			assert(par1!=sweep_parity[other-sweep.begin()]);
+
+			sweep_parity.erase(sweep_parity.begin()+(other-sweep.begin()));
+			sweep_parity.erase(sweep_parity.begin()+(edge-sweep.begin()));
+
+			for (unsigned test=0; test<sweep_parity.size(); test++) {
+				if (sweep_parity[test]) v--;
+				else v++;
+
+				assert(v>=0);
+			}
+
+			assert(v==0);
+
+			unsigned edge_off = edge-sweep.begin();
+			sweep.erase(other);
+			sweep.erase(sweep.begin()+edge_off);
 		}
+
+		for (unsigned test=0; test<sweep_parity.size(); test++) {
+			if (sweep_parity[test]) v--;
+			else v++;
+
+			assert(v>=0);
+		}
+
+		assert(v==0);
 	}
 
 	update_buffers();
@@ -709,6 +812,19 @@ void Path::merge(Path const& other) {
 	}
 
 	points.insert(points.end(), other.points.begin(), other.points.end());
+}
+
+void Path::split(size_t part, GLuint i1, GLuint i2) {
+	if (i1>i2) std::swap(i1, i2);
+
+	size_t rest = parts[part]-i2;
+
+	auto iter = points.insert(points.begin()+i1+1, points[i2]);
+	std::rotate(iter+1, points.begin()+i2+2, points.begin() + parts[part] + 1);
+
+	points.insert(iter+rest-1, points[i1]);
+	for (size_t i=part; i<parts.size(); i++) parts[part]+=2;
+	parts.insert(parts.begin()+part, i1+rest);
 }
 
 void Path::arc(float angle, Vec2 to, size_t divisions) {
@@ -774,80 +890,83 @@ void Path::cubic(Vec2 p2, Vec2 p3, Vec2 p4, float res) {
 	points.push_back(p4);
 }
 
-void Path::stroke_side(Path& expanded, bool cw) const {
+void Path::stroke_side(size_t part, Path& expanded, bool cw) const {
 	Vec2 off;
 
-	for (size_t part=0; part<parts.size(); part++) {
-		GLuint lim = part+1==parts.size() ? points.size() : parts[part + 1];
-		GLuint n = lim-parts[part];
-		if (n==1) continue;
+	GLuint lim = part+1==parts.size() ? points.size() : parts[part + 1];
+	GLuint n = lim-parts[part];
+	if (n==1) return;
 
-		for (GLuint i = cw ? parts[part] : lim-1; cw ? i< lim : i!=parts[part]-1; cw ? i++ : i--) {
-			if ((i>parts[part] && i<lim-1) || closed) {
-				Vec2 diff = (points[i]-points[i==parts[part] ? lim-1 : i-1]);
-				for (GLuint i_minus=2; diff>-Epsilon && diff<Epsilon && i_minus<n; i_minus++)
-					 diff = points[i] - points[i_minus+parts[part]>=i ? lim-i_minus+i : i-i_minus];
-				diff=diff.normalize(1);
+	for (GLuint i = cw ? parts[part] : lim-1; cw ? i< lim : i!=parts[part]-1; cw ? i++ : i--) {
+		 if ((i>parts[part] && i<lim-1) || closed) {
+			 Vec2 diff = (points[i]-points[i==parts[part] ? lim-1 : i-1]);
+			 for (GLuint i_minus=2; diff>-Epsilon && diff<Epsilon && i_minus<n; i_minus++)
+					diff = points[i] - points[i_minus+parts[part]>=i ? lim-i_minus+i : i-i_minus];
+			 diff=diff.normalize(1);
 
-				Vec2 diff2 = points[i+1==lim ? parts[part] : i+1] - points[i];
-				for (GLuint i_plus=2; diff2>-Epsilon && diff2<Epsilon && i_plus<n; i_plus++)
-					 diff2 = points[parts[part] + ((i+i_plus-parts[part])%n)] - points[i];
-				diff2=diff2.normalize(1);
+			 Vec2 diff2 = points[i+1==lim ? parts[part] : i+1] - points[i];
+			 for (GLuint i_plus=2; diff2>-Epsilon && diff2<Epsilon && i_plus<n; i_plus++)
+					diff2 = points[parts[part] + ((i+i_plus-parts[part])%n)] - points[i];
+			 diff2=diff2.normalize(1);
 
-				Vec2 avg = (diff2-diff).normalize(1);
-				float slope = diff.determinant(avg);
+			 Vec2 avg = (diff2-diff).normalize(1);
+			 float slope = diff.determinant(avg);
 
-				bool off_sign = cw ? slope<=0 : slope>=0;
+			 bool off_sign = cw ? slope<=0 : slope>=0;
 
-				if (join==Join::Round && off_sign) {
-					expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
-					off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
-					expanded.fan(points[i] + off, points[i], 15);
-					expanded.points.emplace_back(points[i] + off);
-				} else if ((join==Join::Bevel || std::abs(1/slope)>miter_limit) && off_sign) {
-					expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
-					off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
-					expanded.points.emplace_back(points[i] + off);
-				} else {
-					off = avg*(off_sign ? -std::abs(stroke_width/slope) : std::abs(stroke_width/slope));
-					expanded.points.emplace_back(points[i] + off);
-				}
-			} else if (i==parts[part]) {
-				if (cap==Cap::Round && !cw) continue;
+			 if (join==Join::Round && off_sign) {
+				 expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
+				 off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
+				 expanded.fan(points[i] + off, points[i], 15);
+				 expanded.points.emplace_back(points[i] + off);
+			 } else if ((join==Join::Bevel || std::abs(1/slope)>miter_limit) && off_sign) {
+				 expanded.points.emplace_back(points[i] + (cw ? diff : diff2).perpendicular(cw, !cw)*stroke_width);
+				 off = (cw ? diff2 : diff).perpendicular(cw, !cw)*stroke_width;
+				 expanded.points.emplace_back(points[i] + off);
+			 } else {
+				 off = avg*(off_sign ? -std::abs(stroke_width/slope) : std::abs(stroke_width/slope));
+				 expanded.points.emplace_back(points[i] + off);
+			 }
+		 } else if (i==parts[part]) {
+			 if (cap==Cap::Round && !cw) continue;
 
-				Vec2 diff = points[i+1]-points[i];
-				off = diff.perpendicular(cw, !cw).normalize(stroke_width);
-				if (cap==Cap::Square) off -= diff.normalize(stroke_width);
+			 Vec2 diff = points[i+1]-points[i];
+			 off = diff.perpendicular(cw, !cw).normalize(stroke_width);
+			 if (cap==Cap::Square) off -= diff.normalize(stroke_width);
 
-				if (cap==Cap::Round) {
-					expanded.points.emplace_back(points[i]-off);
-					expanded.arc(M_PI, points[i] + off, 15);
-				} else {
-					expanded.points.emplace_back(points[i] + off);
-				}
-			} else {
-				if (cap==Cap::Round && !cw) continue;
+			 if (cap==Cap::Round) {
+				 expanded.points.emplace_back(points[i]-off);
+				 expanded.arc(M_PI, points[i] + off, 15);
+			 } else {
+				 expanded.points.emplace_back(points[i] + off);
+			 }
+		 } else {
+			 if (cap==Cap::Round && !cw) continue;
 
-				Vec2 diff = points[i]-points[i-1];
-				off = diff.perpendicular(cw, !cw).normalize(stroke_width);
-				if (cap==Cap::Square) off += diff.normalize(stroke_width);
+			 Vec2 diff = points[i]-points[i-1];
+			 off = diff.perpendicular(cw, !cw).normalize(stroke_width);
+			 if (cap==Cap::Square) off += diff.normalize(stroke_width);
 
-				if (cap==Cap::Round) {
-					expanded.points.emplace_back(points[i]+off);
-					expanded.arc(M_PI, points[i]-off, 15);
-				} else {
-					expanded.points.emplace_back(points[i] + off);
-				}
-			}
-		}
+			 if (cap==Cap::Round) {
+				 expanded.points.emplace_back(points[i]+off);
+				 expanded.arc(M_PI, points[i]-off, 15);
+			 } else {
+				 expanded.points.emplace_back(points[i] + off);
+			 }
+		 }
 	}
 }
 
 Path Path::stroke() const {
-	Path expanded = {.points=std::vector<Vec2>(), .fill=true, .closed=true, .stroke_width=0};
-	stroke_side(expanded, true);
-	if (closed) expanded.parts.push_back(expanded.points.size());
-	stroke_side(expanded, false);
+	Path expanded = {.points=std::vector<Vec2>(), .parts={}, .fill=true, .closed=true, .stroke_width=0};
+
+	for (size_t part=0; part<parts.size(); part++) {
+		expanded.parts.push_back(expanded.points.size());
+		stroke_side(part, expanded, true);
+		if (closed) expanded.parts.push_back(expanded.points.size());
+		stroke_side(part, expanded, false);
+	}
+
 	return expanded;
 }
 
@@ -955,13 +1074,12 @@ RenderToFile::RenderToFile(Window& wind, Vec2 size, unsigned fps, char const* fi
 void RenderToFile::render_channel(size_t i) {
 	Texture& tex = channel(i);
 
-	if (tex.format!=GL_RGBA || tex.internalformat!=GL_RGBA8) throw std::runtime_error("only rgba8 supported for rendertofile");
+	if (tex.format.format!=GL_RGBA || tex.format.internal!=GL_RGBA8) throw std::runtime_error("only rgba8 supported for rendertofile");
 
 	buf.resize(static_cast<size_t>(size[0]*size[1])*4);
 
-
 	glBindTexture(GL_TEXTURE_2D, tex.idx);
-	glGetTexImage(GL_TEXTURE_2D, 0, tex.format, GL_UNSIGNED_BYTE, buf.data());
+	glGetTexImage(GL_TEXTURE_2D, 0, tex.format.format, GL_UNSIGNED_BYTE, buf.data());
 
 	glFinish();
 

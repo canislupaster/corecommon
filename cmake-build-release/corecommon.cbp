@@ -8,344 +8,324 @@
 		<Option virtualFolders="CMake Files\;"/>
 		<Build>
 			<Target title="all">
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option type="4"/>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 all"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 all"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="rebuild_cache">
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option type="4"/>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="edit_cache">
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option type="4"/>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 edit_cache"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 edit_cache"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="test">
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option type="4"/>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 test"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-				</MakeCommands>
-			</Target>
-			<Target title="config_parser_test">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/config_parser_test" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
-				<Option object_output="./"/>
-				<Option type="1"/>
-				<Option compiler="gcc"/>
-				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
-					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
-					<Add directory="/System/Library/Frameworks"/>
-					<Add directory="/Library/Frameworks"/>
-				</Compiler>
-				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 config_parser_test"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-				</MakeCommands>
-			</Target>
-			<Target title="config_parser_test/fast">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/config_parser_test" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
-				<Option object_output="./"/>
-				<Option type="1"/>
-				<Option compiler="gcc"/>
-				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
-					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
-					<Add directory="/System/Library/Frameworks"/>
-					<Add directory="/Library/Frameworks"/>
-				</Compiler>
-				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 config_parser_test/fast"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-				</MakeCommands>
-			</Target>
-			<Target title="graphics">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/libgraphics.a" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
-				<Option object_output="./"/>
-				<Option type="2"/>
-				<Option compiler="gcc"/>
-				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
-					<Add directory="/usr/local/include/freetype2"/>
-					<Add directory="/usr/local/include/SDL2"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
-					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
-					<Add directory="/System/Library/Frameworks"/>
-					<Add directory="/Library/Frameworks"/>
-				</Compiler>
-				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 graphics"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-				</MakeCommands>
-			</Target>
-			<Target title="graphics/fast">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/libgraphics.a" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
-				<Option object_output="./"/>
-				<Option type="2"/>
-				<Option compiler="gcc"/>
-				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
-					<Add directory="/usr/local/include/freetype2"/>
-					<Add directory="/usr/local/include/SDL2"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
-					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
-					<Add directory="/System/Library/Frameworks"/>
-					<Add directory="/Library/Frameworks"/>
-				</Compiler>
-				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 graphics/fast"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 test"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="sortedmaptest">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/sortedmaptest" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/sortedmaptest" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 sortedmaptest"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 sortedmaptest"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="sortedmaptest/fast">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/sortedmaptest" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/sortedmaptest" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 sortedmaptest/fast"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 sortedmaptest/fast"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="maptest">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/maptest" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/maptest" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 maptest"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 maptest"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="maptest/fast">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/maptest" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/maptest" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 maptest/fast"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 maptest/fast"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="config_parser_test">
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/config_parser_test" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 config_parser_test"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="config_parser_test/fast">
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/config_parser_test" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 config_parser_test/fast"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rawstringifier">
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/rawstringifier" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 rawstringifier"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rawstringifier/fast">
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/rawstringifier" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 rawstringifier/fast"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="corecommon">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/libcorecommon.a" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/libcorecommon.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="2"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 corecommon"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 corecommon"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 			<Target title="corecommon/fast">
-				<Option output="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/libcorecommon.a" prefix_auto="0" extension_auto="0"/>
-				<Option working_dir="/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release"/>
+				<Option output="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release/libcorecommon.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/thomasmarlowe/Documents/pdf sync/corecommon/cmake-build-release"/>
 				<Option object_output="./"/>
 				<Option type="2"/>
 				<Option compiler="gcc"/>
 				<Compiler>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src"/>
-					<Add directory="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics"/>
+					<Add directory="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1"/>
 					<Add directory="/usr/local/include"/>
-					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/12.0.5/include"/>
+					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/13.0.0/include"/>
 					<Add directory="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"/>
 					<Add directory="/System/Library/Frameworks"/>
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 corecommon/fast"/>
-					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
-					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
-					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/timeshit2/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<Build command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 corecommon/fast"/>
+					<CompileFile command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j16 -f &quot;/Users/thomasmarlowe/Documents/pdf\ sync/corecommon/cmake-build-release/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
 		</Build>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics/graphics.cpp">
-			<Option target="graphics"/>
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/rawstringifier.cpp">
+			<Option target="rawstringifier"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/graphics/graphics.hpp">
-			<Option target="graphics"/>
-		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/bitflags.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/arrayset.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/config.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/config.cpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/config.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/config.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/cyclingindex.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/cyclingindex.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/database.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/field.cpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/database.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/field.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/field.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/locktable.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/field.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/map.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/locktable.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/parser.cpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/map.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/parser.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/parser.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/serialize.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/parser.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/smallvec.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/serialize.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/sortedmap.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/sortedmap.hpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/util.cpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/util.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/src/util.hpp">
 			<Option target="corecommon"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/src/util.hpp">
-			<Option target="corecommon"/>
-		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/tests/config_parser_test.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/tests/config_parser_test.cpp">
 			<Option target="config_parser_test"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/tests/maptest.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/tests/maptest.cpp">
 			<Option target="maptest"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/tests/sortedmaptest.cpp">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/tests/sortedmaptest.cpp">
 			<Option target="sortedmaptest"/>
 		</Unit>
-		<Unit filename="/Users/thomasmarlowe/Documents/timeshit2/corecommon/CMakeLists.txt">
+		<Unit filename="/Users/thomasmarlowe/Documents/pdf sync/corecommon/CMakeLists.txt">
 			<Option virtualFolder="CMake Files\"/>
 		</Unit>
 	</Project>
