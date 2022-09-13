@@ -230,6 +230,14 @@ class Slice {
 		return slice_type.data+slice_type.size();
 	}
 
+	std::reverse_iterator<typename SliceType::type*> rbegin() {
+		return std::make_reverse_iterator(end());
+	}
+
+	std::reverse_iterator<typename SliceType::type*> rend() {
+		return std::make_reverse_iterator(begin());
+	}
+
 	size_t size() const {
 		return slice_type.size();
 	}

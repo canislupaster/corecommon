@@ -5,6 +5,7 @@
 #include "btree.hpp"
 
 #include <algorithm>
+#include <queue>
 
 LazyInitialize<FillShader> fill_shader([](){return FillShader();});
 
@@ -459,22 +460,29 @@ bool is_crossing(Vec2 const& p1, Vec2 const& p2, std::vector<std::reference_wrap
 	return num_crossings%2==0;
 }
 
+struct SweepEdge;
+using EdgeNode = Node<float, SweepEdge, std::greater<float>>;
+
+struct Containment {
+	EdgeNode* edge;
+	unsigned chain_i;
+};
+
 struct MonotonePolygon {
-	std::vector<GLuint> left;
-	std::vector<GLuint> right;
-	std::unique_ptr<MonotonePolygon> merging;
+	std::vector<std::vector<GLuint>> chain;
+	unsigned left, right;
+
+	std::vector<Containment> container;
 };
 
 struct SweepEdge {
-	bool left;
 	GLuint from;
 	GLuint to;
+	bool left;
 
 	std::unique_ptr<MonotonePolygon> poly;
-	Node<float, SweepEdge>* other;
+	EdgeNode* other;
 };
-
-using EdgeNode = Node<float, SweepEdge>;
 
 void Geometry::triangulate(Path const& path) {
 	Path stroked;
@@ -512,11 +520,9 @@ void Geometry::triangulate(Path const& path) {
 	}
 	std::cout<<std::endl;
 
-	auto triangulate_monotone = [&](MonotonePolygon& poly){
-		auto iter = poly.left.rbegin();
-		auto other_iter = poly.right.rbegin();
-		std::vector<GLuint>* chain = &poly.left;
-		std::vector<GLuint>* other_chain = &poly.right;
+	auto triangulate_chain = [&](std::vector<GLuint>* chain, std::vector<GLuint>* other_chain, GLuint* split) -> std::pair<std::vector<GLuint>*, std::vector<GLuint>::iterator>  {
+		auto iter = chain->rbegin();
+		auto other_iter = chain->rbegin();
 		bool iter_left=true;
 		bool switched=false;
 
@@ -526,7 +532,10 @@ void Geometry::triangulate(Path const& path) {
 					((other_iter==other_chain->rend()) || (p[*iter][1]<p[*other_iter][1]
 							|| (p[*iter][1]==p[*other_iter][1] && p[*iter][0]<=p[*other_iter][0])))) {
 
-				if (iter-chain->rbegin()>1 || (!switched && iter!=chain->rbegin())) {
+				if (split && (p[*split][1]<p[*iter][1]
+							|| (p[*split][1]==p[*iter][1] && p[*split][0]<=p[*iter][0]))) {
+					return std::make_pair(chain, iter.base()-1);
+				} else if (iter-chain->rbegin()>1 || (!switched && iter!=chain->rbegin())) {
 					auto iter_cpy = iter-1;
 					while (iter_cpy!=chain->rbegin()) {
 						float d = (p[*iter_cpy]-p[*(iter_cpy-1)]).determinant(p[*iter]-p[*(iter_cpy-1)]);
@@ -582,22 +591,89 @@ void Geometry::triangulate(Path const& path) {
 			iter_left = !iter_left;
 			switched=true;
 		}
+
+		return std::make_pair(nullptr, chain->begin());
 	};
 
-	auto get_poly = [&](auto edge) {
-		return stack.begin() + std::count(sweep_parity.begin(), sweep_parity.begin()+(edge-sweep.begin())+1, false)-1;
+	const auto cmp_chain = [&](std::vector<GLuint>* const& chain1, std::vector<GLuint>* const& chain2) {
+		return p[chain2->back()][1]<p[chain1->back()][1] || (p[chain2->back()][1]==p[chain1->back()][1] && p[chain2->back()][0]<=p[chain1->back()][0]);
 	};
 
-	//hmm if we are generous in splitting polygons then those which werent meant to be split will be safely merged? i hope god fucking damnit
-	auto get_poly_containing = [&](auto edge) {
+	auto triangulate_monotone = [&](MonotonePolygon& poly) {
+		std::priority_queue<std::vector<GLuint>*, std::vector<std::vector<GLuint>*>, decltype(cmp_chain)> sorted_chains(cmp_chain);
+		std::vector<std::vector<GLuint>*> other_chain;
+		other_chain.insert(other_chain.end(),poly.chain.size(),nullptr);
 
+		for (auto chain=poly.chain.begin(); chain!=poly.chain.end(); chain++) {
+			sorted_chains.push(&*chain);
+		}
+
+		std::vector<GLuint>* cbegin = poly.chain.data();
+
+		while (!sorted_chains.empty()) {
+			auto top = sorted_chains.top();
+			sorted_chains.pop();
+
+			auto& other = other_chain[top-cbegin];
+			if (!other) {
+				other = sorted_chains.top();
+				other_chain[other-cbegin] = top;
+			}
+
+			bool reins_other = sorted_chains.top()==other;
+			if (reins_other) sorted_chains.pop();
+			GLuint* split = sorted_chains.empty() ? nullptr : &sorted_chains.top()->back();
+
+			if (other->size()==0 || top->size()==0) {
+
+			}
+			
+			auto ret = triangulate_chain(top, other, split);
+			auto split_chain = ret.first;
+
+			if (split_chain) {
+				auto schain = sorted_chains.top();
+
+				std::vector<GLuint>* min = std::min(top, other);
+				std::vector<GLuint>* max = std::max(top, other);
+
+				if (schain<max && schain>min) {
+					sorted_chains.pop();
+					auto other_sc = sorted_chains.top();
+					sorted_chains.pop();
+
+					bool par = (schain-cbegin) % 2 == 0;
+					bool is_sc = (split_chain==max && par) || (split_chain==min && !par);
+					auto c = is_sc ? schain : other_sc;
+					auto oc = is_sc ? other_sc : schain;
+
+					c->insert(c->end(), ret.second, split_chain->end());
+					split_chain->erase(ret.second+1, split_chain->end());
+					oc->push_back(*ret.second);
+
+					//i dont even know
+					other_chain[c-cbegin] = split_chain;
+					other_chain[oc-cbegin] = other_chain[split_chain-cbegin];
+					other_chain[split_chain-cbegin] = c;
+					other_chain[other_chain[split_chain-cbegin]-cbegin] = oc;
+					
+					sorted_chains.push(c);
+					sorted_chains.push(oc);
+				}
+
+				sorted_chains.push(top);
+				if (reins_other) sorted_chains.push(other);
+			}
+		}
 	};
 
-	auto getx = [&](SweepEdge& edge, float y) -> float {
-		if (y==p[edge.from][1]) return p[edge.from][0];
+	auto getx = [&](SweepEdge& edge, size_t i) -> float {
+		float y = p[sorted[i]][1];
+		float dy = p[edge.from][1]-p[edge.to][1];
+
+		if ((std::abs(dy)>0 || p[sorted[i]][0]>p[edge.to][0]) && y==p[edge.from][1]) return p[edge.from][0];
 		else if (y==p[edge.to][1]) return p[edge.to][0];
 
-		float dy = p[edge.from][1]-p[edge.to][1];
 		return dy==0 ? p[edge.to][0] : p[edge.from][0]+(p[edge.to][0]-p[edge.from][0])*(p[edge.from][1]-y)/dy;
 	};
 
@@ -605,10 +681,10 @@ void Geometry::triangulate(Path const& path) {
 		auto part = path_ref.part(sorted[i]);
 		std::array<GLuint, 2> adj = {path_ref.prev(part, sorted[i]), path_ref.next(part, sorted[i])};
 
-//		if ((p[adj[0]]-p[sorted[i]]).abs()<Epsilon) continue;
-
 		int v=0;
-		for (EdgeNode& edge: edges) {
+		for (EdgeNode::Iterator iter=edges.begin(); iter!=edges.end();) {
+			EdgeNode& edge = *iter;
+
 			if (edge.v.left) {
 				v++;
 				std::cout << "(";
@@ -619,23 +695,36 @@ void Geometry::triangulate(Path const& path) {
 
 			assert(v>=0);
 
-			float new_k = getx(edge.v, p[sorted[i]][1]);
-			SweepEdge cpy(std::move(edge.v));
-			edges_new.insert(static_cast<float&&>(new_k), std::move(cpy));
+			float new_k = getx(edge.v, i);
+
+			std::unique_ptr<EdgeNode> node = iter.consume();
+			node->x = new_k;
+			edges_new.insert_node(std::move(node));
 		}
 
-		std::swap(edges, edges_new);
+		edges.swap(edges_new);
 
 		assert(v==0);
 		std::cout << std::endl;
 
 		std::cout << " -> ";
+		Map<EdgeNode*, std::monostate> containing;
 		for (EdgeNode& edge: edges) {
+			if (edge.v.poly) {
+				std::vector<Containment>& container = edge.v.poly->container;
+				for (auto iter=container.begin(); iter!=container.end(); iter++) {
+					if (!containing[iter->edge]) iter = container.erase(iter)-1;
+				}
+			}
+
 			if (edge.v.left) {
 				v++;
+				containing.insert(&edge, std::monostate());
 				std::cout << "(";
 			} else {
 				v--;
+				EdgeNode* ptr = &edge;
+				containing.remove(ptr);
 				std::cout << ")";
 			}
 
@@ -645,149 +734,206 @@ void Geometry::triangulate(Path const& path) {
 		assert(v==0);
 		std::cout << std::endl;
 
-		EdgeNode* edge = edges.find(p[sorted[i]][0]);
+		EdgeNode* node = edges.find(p[sorted[i]][0]);
 
-//		for (unsigned idx=sorted[i]; (p[adj[1]]-p[idx]).abs()<Epsilon;) {
-//			auto new_edge = std::find_if(sweep.begin(), sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == adj[1];});
-//			if (new_edge<edge) edge=new_edge;
-//
-//			idx=adj[1];
-//			adj[1]=path_ref.next(part, adj[1]);
-//		}
+		{
+			EdgeNode::Iterator iter=edges.iter_ref(node);
+			for (; iter!=edges.end() && iter->v.to!=sorted[i]; ++iter);
+			node=iter==edges.end() ? nullptr : &*iter;
+		}
 
 		if (adj[1]==adj[0]) continue; //sanity check, in case not a triangle i guess
 
 		bool l1 = p[adj[0]][1] < p[sorted[i]][1] || (p[adj[0]][1]==p[sorted[i]][1] && p[adj[0]][0] < p[sorted[i]][0]);
 		bool l2 = p[adj[1]][1] < p[sorted[i]][1] || (p[adj[1]][1]==p[sorted[i]][1] && p[adj[1]][0] < p[sorted[i]][0]);
 
-		auto merge_poly = [&](EdgeNode::Iterator edge){
-			auto& poly = edge.current->v.poly;
-
-			if (adj[0]==poly->left.back() || adj[1]==poly->left.back()) {
-				poly->left.push_back(sorted[i]);
-				//poly->right.push_back(sorted[i]);
-				triangulate_monotone(*poly);
-
-				poly.swap(poly->merging);
-				poly->left.push_back(sorted[i]);
-			} else if (adj[0]==poly->merging->right.back() || adj[1]==poly->merging->right.back()) {
-				poly->merging->right.push_back(sorted[i]);
-				poly->right.push_back(sorted[i]);
-
-				triangulate_monotone(*poly->merging);
-			}
-
-			poly->merging.reset();
-
-			return poly.get();
-		};
-
-		if (!edge) {
+		if (!node) {
 			bool swap = p[adj[1]][1]==p[adj[0]][1] ? p[adj[0]][0] < p[adj[1]][0] : (p[adj[0]]-p[sorted[i]]).determinant(p[adj[1]]-p[sorted[i]])>0;
 
-			//split/new
-			bool par = sweep_pos!=sweep.begin() && !sweep_parity[sweep_pos-sweep.begin()-1];
-			auto par_first = sweep_parity.emplace(sweep_parity.begin()+(sweep_pos-sweep.begin()), par);
-			sweep_parity.emplace(par_first+1, !par);
+			EdgeNode::Iterator iter = edges.iter_ref(node);
+			std::vector<Containment> container;
 
-			MonotonePolygon* poly;
-			if (par) {
-				auto poly = get_poly(sweep_pos);
+			if (iter!=edges.end()) {
+				 int v=0;
+				 do {
+					 if (iter->v.left && v==0) {
+						 container.push_back(Containment {.edge=&*iter, .chain_i=iter->v.poly->left+1});
+					 } else if (iter->v.left) {
+						 v--;
+					 } else {
+						 v++;
+					 }
+				 } while (iter!=edges.begin());
+			}
 
-				if (poly->merging) {
-					poly->right.push_back(sorted[i]);
-					poly->merging->left.push_back(sorted[i]);
+			auto poly = new MonotonePolygon {.chain={{sorted[i]}, {sorted[i]}}, .left=0, .right=1, .container=std::move(container)};
 
-					MonotonePolygon* merging = poly->merging.release();
-					stack.insert(poly+1, std::move(*merging));
-					delete merging;
-				} else if ((p[poly->left.back()][1] < p[poly->right.back()][1])
-						|| (p[poly->left.back()][1]==p[poly->right.back()][1] && p[poly->left.back()][0] < p[poly->right.back()][0])) {
-					auto new_poly = MonotonePolygon {.left={poly->left.back()}, .right={poly->left.back(), sorted[i]}};
-					poly->left.push_back(sorted[i]);
-					stack.insert(poly, std::move(new_poly));
+			GLuint first = swap ? adj[1] : adj[0], second=swap ? adj[0] : adj[1];
+
+			EdgeNode* np = edges.insert(static_cast<float&&>(p[sorted[i]][0]), SweepEdge {
+					.from=sorted[i], .to=first, .left=true, .poly=std::unique_ptr<MonotonePolygon>(poly)
+			});
+
+			np->v.other = edges.insert(static_cast<float&&>(p[sorted[i]][0]), SweepEdge {
+					.from=sorted[i], .to=second, .left=false, .other=np
+			});
+		} else if (node) {
+			SweepEdge& edge = node->v;
+
+			if (l1 || l2) {
+				if (edge.left) {
+					edge.poly->chain[edge.poly->left].push_back(sorted[i]);
 				} else {
-					auto new_poly = MonotonePolygon {.left={poly->right.back(), sorted[i]}, .right={poly->right.back()}};
-					poly->right.push_back(sorted[i]);
-					stack.insert(poly+1, std::move(new_poly));
-				}
-			} else {
-				poly = new MonotonePolygon {.left={sorted[i]}, .right={sorted[i]}};
-			}
-
-			auto first = sweep.emplace(sweep_pos, sorted[i], swap ? adj[1] : adj[0]);
-			sweep.emplace(first+1, sorted[i], swap ? adj[0] : adj[1]);
-			edges.insert(static_cast<float&&>(p[sorted[i]][0]), )
-		} else if (l1 || l2) {
-			auto poly = get_poly(edge);
-
-			if (poly->merging) {
-				merge_poly(poly);
-			} else if (sweep_parity[edge-sweep.begin()]) {
-				poly->right.push_back(sorted[i]);
-			} else {
-				poly->left.push_back(sorted[i]);
-			}
-
-			if (l1) *edge = std::pair(sorted[i], adj[0]);
-			else *edge = std::pair(sorted[i], adj[1]);
-		} else {
-			auto poly = get_poly(edge);
-
-			if (sweep_parity[edge-sweep.begin()]) {
-				if (poly->merging) poly = merge_poly(poly);
-				else poly->right.push_back(sorted[i]);
-
-				auto poly2 = poly+1 == stack.end() ? poly-1 : poly+1;
-				if (poly2->merging) poly2 = merge_poly(poly2);
-				else poly2->left.push_back(sorted[i]);
-
-				poly->merging = std::unique_ptr<MonotonePolygon>(new MonotonePolygon(std::move(*poly2)));
-				stack.erase(poly2);
-			} else {
-				poly->left.push_back(sorted[i]);
-
-				if (poly->merging) {
-					poly->merging->left.push_back(sorted[i]);
-					//poly->merging->right.push_back(sorted[i]);
-					triangulate_monotone(*poly->merging);
+					auto& poly = *edge.other->v.poly;
+					poly.chain[poly.right].push_back(sorted[i]);
 				}
 
-				triangulate_monotone(*poly);
-				stack.erase(poly);
+				if (l1) {
+					edge.from = sorted[i];
+					edge.to = adj[0];
+				} else {
+					edge.from = sorted[i];
+					edge.to = adj[1];
+				}
+			} else {
+				auto& poly = edge.poly ? *edge.poly : *edge.other->v.poly;
+				EdgeNode::Iterator iter = edges.iter_ref(node);
+				do {++iter;} while (iter->v.to!=sorted[i]);
+
+				auto update_containers = [&](EdgeNode* contained_in, EdgeNode::Iterator iter2, EdgeNode* end, EdgeNode* new_edge, unsigned chain_off) {
+					for (; iter2.current!=end; ++iter2) {
+						if (iter2->v.left) {
+							auto contains = std::find_if(iter2->v.poly->container.begin(), iter2->v.poly->container.end(),
+							                             [&](Containment const& c) {return c.edge==contained_in;});
+							if (contains==iter2->v.poly->container.end()) continue;
+
+							if (new_edge) {
+								contains->edge = new_edge;
+								contains->chain_i += chain_off;
+							} else {
+								iter2->v.poly->container.erase(contains);
+							}
+						}
+					}
+				};
+
+				//)(
+				if (!edge.left && iter->v.left && iter->v.poly.get()!=&poly) {
+					auto& poly2 = *iter->v.poly;
+
+					poly.chain[poly.right].push_back(sorted[i]);
+					poly2.chain[poly2.left].push_back(sorted[i]);
+
+					unsigned nr = poly.chain.size() + poly2.right;
+					unsigned prev_r = poly.right+1;
+					poly.chain.insert(poly.chain.begin()+poly.right+1, std::move_iterator(poly2.chain.begin()), std::move_iterator(poly2.chain.end()));
+					poly.right = nr;
+
+					auto& poly2_edge = *iter;
+					++iter;
+					update_containers(&poly2_edge, iter, poly2_edge.v.other, edge.other, prev_r);
+
+					poly2_edge.v.other->v.other = edge.other;
+					edge.other->v.other = poly2_edge.v.other;
+
+					for (auto const& containment: poly2.container) {
+						containing.insert(containment.edge, std::monostate());
+					}
+
+					for (auto containment=poly.container.begin(); containment!=poly.container.end(); containment++) {
+						if (!containing[containment->edge]) containment = poly.container.erase(containment)-1;
+					}
+
+					--iter;
+					//(( or ))
+				} else if ((iter->v.poly && iter->v.poly.get()!=&poly) || (iter->v.other->v.poly.get()!=&poly)) {
+					if (!iter->v.poly) iter = edges.iter_ref(iter->v.other);
+
+					auto& poly2 = *iter->v.poly;
+					auto containment = std::find_if(poly2.container.begin(), poly2.container.end(),
+					                                [&](Containment const& c) {return c.edge==node;});
+
+					//((
+					if (edge.left && containment!=poly2.container.end()) {
+						poly.chain[poly.left].push_back(sorted[i]);
+						poly2.chain[poly2.left].push_back(sorted[i]);
+
+						poly.chain.insert(poly.chain.begin()+containment->chain_i, std::move_iterator(poly2.chain.begin()), std::move_iterator(poly2.chain.end()));
+
+						EdgeNode::Iterator poly2_other = edges.iter_ref(iter->v.other);
+						poly2_other->v.poly.swap(edge.poly);
+						poly2_other->v.left = true;
+
+						++poly2_other;
+
+						update_containers(node, poly2_other, edge.other, &*poly2_other, poly2.chain.size());
+						//shouldnt be anything here unless degenerate, but i dont want this to crash bc of ur terrible polys
+
+						auto& poly2_edge = *iter;
+						update_containers(node, edges.iter_ref(node)+1, &poly2_edge, &*poly2_other, 0);
+
+						++iter;
+						update_containers(&poly2_edge, iter, poly2_edge.v.other, nullptr, 0);
+
+						poly.left = containment->chain_i+poly2.right;
+					//))
+					} else {
+						containment = std::find_if(poly.container.begin(), poly.container.end(),
+						                           [&](Containment const& c) {return c.edge==&*iter;});
+
+						if (!edge.left && containment!=poly.container.end()) {
+							poly.chain[poly.right].push_back(sorted[i]);
+							poly2.chain[poly2.right].push_back(sorted[i]);
+
+							poly2.chain.insert(poly2.chain.begin()+containment->chain_i, std::move_iterator(poly.chain.begin()), std::move_iterator(poly.chain.end()));
+
+							auto& poly2_edge = *iter;
+							EdgeNode::Iterator poly2_other = edges.iter_ref(poly2_edge.v.other);
+
+							update_containers(node, edges.iter_ref(node)+1, &poly2_edge, &*poly2_other, poly.chain.size());
+
+							update_containers(edge.other, edges.iter_ref(edge.other)+1, node, nullptr, 0);
+
+							edge.other->v.left = false;
+							edge.other->v.other=&*poly2_other;
+
+							poly2.right = containment->chain_i+poly.left;
+
+						//fuked up / self-intersecting
+						} else {
+							//discard both, for now
+
+							auto pleft = edge.left ? node : edge.other;
+							update_containers(pleft, edges.iter_ref(pleft)+1, pleft->v.other, nullptr, 0);
+							auto p2left = iter->v.left ? &*iter : iter->v.other;
+							update_containers(p2left, edges.iter_ref(p2left)+1, p2left->v.other, nullptr, 0);
+
+							iter->v.other->remove();
+							edge.other->remove();
+						}
+					}
+					//normal end
+				} else {
+					poly.chain[poly.left].push_back(sorted[i]);
+					poly.chain[poly.right].push_back(sorted[i]);
+
+					auto pleft = edge.left ? node : edge.other;
+					update_containers(pleft, edges.iter_ref(pleft)+1, pleft->v.other, nullptr, 0);
+
+					if (poly.container.empty()) {
+						triangulate_monotone(poly);
+					} else {
+						auto containment = poly.container.front();
+						auto& outside_poly = *containment.edge->v.poly;
+
+						outside_poly.chain.insert(outside_poly.chain.begin()+containment.chain_i, std::move_iterator(poly.chain.begin()), std::move_iterator(poly.chain.end()));
+					}
+				}
+
+				node->remove();
+				iter->remove();
 			}
-
-			bool par1 = sweep_parity[edge-sweep.begin()];
-			auto other = std::find_if(edge+1, sweep.end(), [&](std::pair<GLuint, GLuint> x){return x.second == sorted[i];});
-			unsigned diff = other-edge;
-			assert(diff==1);
-			assert(par1!=sweep_parity[other-sweep.begin()]);
-
-			sweep_parity.erase(sweep_parity.begin()+(other-sweep.begin()));
-			sweep_parity.erase(sweep_parity.begin()+(edge-sweep.begin()));
-
-			for (unsigned test=0; test<sweep_parity.size(); test++) {
-				if (sweep_parity[test]) v--;
-				else v++;
-
-				assert(v>=0);
-			}
-
-			assert(v==0);
-
-			unsigned edge_off = edge-sweep.begin();
-			sweep.erase(other);
-			sweep.erase(sweep.begin()+edge_off);
 		}
-
-		for (unsigned test=0; test<sweep_parity.size(); test++) {
-			if (sweep_parity[test]) v--;
-			else v++;
-
-			assert(v>=0);
-		}
-
-		assert(v==0);
 	}
 
 	update_buffers();
