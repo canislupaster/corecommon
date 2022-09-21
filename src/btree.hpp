@@ -3,10 +3,11 @@
 
 #include <memory>
 #include <optional>
+#include <cassert>
 
 #include "util.hpp"
 
-template<class K, class V, class Compare=std::less<K>>
+template<class K, class V>
 struct Node {
 	struct Iterator {
 		using iterator_category = std::input_iterator_tag;
@@ -71,7 +72,7 @@ struct Node {
 
 		Iterator operator-(unsigned i) const {
 			Iterator ret = *this;
-			while (i!=-1) --ret;
+			while ((i--)>0) --ret;
 			return ret;
 		}
 
@@ -95,14 +96,16 @@ struct Node {
 	struct Root {
 		std::unique_ptr<Node> ptr;
 
-		Node* find(K const& fx) {
-			return ptr ? ptr->find(fx) : nullptr;
+		template<class Compare=std::less<K>>
+		Node* find(K const& fx, Compare cmp={}) {
+			return ptr ? ptr->find(fx, cmp) : nullptr;
 		}
 
-		void insert_node(std::unique_ptr<Node>&& node) {
+		template<class Compare=std::less<K>>
+		void insert_node(std::unique_ptr<Node>&& node, Compare cmp={}) {
 			if (ptr) {
 				node->root = nullptr;
-				ptr->insert_node(std::move(node));
+				ptr->insert_node(std::move(node), cmp);
 			} else {
 				node->root = this;
 				node->parent = nullptr;
@@ -110,10 +113,11 @@ struct Node {
 			}
 		}
 
+		template<class Compare=std::less<K>>
 		Node* insert(K&& ix, V&& iv, Compare ins_cmp={}) {
 			if (ptr) return ptr->insert(std::move(ix), std::move(iv), ins_cmp);
 			else {
-				ptr = std::make_unique<Node>(this, std::move(ix), std::move(iv), ins_cmp);
+				ptr = std::make_unique<Node>(this, std::move(ix), std::move(iv));
 				return ptr.get();
 			}
 		}
@@ -142,8 +146,6 @@ struct Node {
 	Node* parent;
 	Root* root;
 
-	Compare cmp;
-
 	char h_diff;
 
 	K x;
@@ -152,9 +154,9 @@ struct Node {
 	std::unique_ptr<Node> left;
 	std::unique_ptr<Node> right;
 
-	Node(Root* parent, K&& k, V&& v, Compare cmp = {}): root(parent), parent(nullptr), h_diff(0), x(std::move(k)), v(std::move(v)), cmp(cmp) {}
-	Node(Node* parent, K&& k, V&& v, Compare cmp = {}): root(nullptr), parent(parent), h_diff(0), x(std::move(k)), v(std::move(v)), cmp(cmp) {}
-	Node(K&& k, V&& v, Compare cmp = {}): root(nullptr), parent(nullptr), h_diff(0), x(std::move(k)), v(std::move(v)), cmp(cmp) {}
+	Node(Root* parent, K&& k, V&& v): root(parent), parent(nullptr), h_diff(0), x(std::move(k)), v(std::move(v)) {}
+	Node(Node* parent, K&& k, V&& v): root(nullptr), parent(parent), h_diff(0), x(std::move(k)), v(std::move(v)) {}
+	Node(K&& k, V&& v): root(nullptr), parent(nullptr), h_diff(0), x(std::move(k)), v(std::move(v)) {}
 
 	std::unique_ptr<Node>* parent_ptr() {
 		if (parent) return parent->left.get()==this ? &parent->left : &parent->right;
@@ -164,9 +166,11 @@ struct Node {
 
 	Node* rot_right() {
 		std::unique_ptr<Node>& ptr = *parent_ptr();
+
 		ptr.release();
 		ptr.swap(right);
 		right.swap(ptr->left);
+		if (right) right->parent = this;
 		ptr->left=std::unique_ptr<Node>(this);
 		
 		ptr->parent = parent;
@@ -189,6 +193,7 @@ struct Node {
 		ptr.release();
 		ptr.swap(left);
 		left.swap(ptr->right);
+		if (left) left->parent = this;
 		ptr->right=std::unique_ptr<Node>(this);
 
 		ptr->parent = parent;
@@ -205,7 +210,7 @@ struct Node {
 		return ptr.get();
 	}
 
-	Node* rebalance(bool r_inc) {
+	Node* rebalance(bool r_inc, bool rem) {
 		Node* node = this;
 
 		while (node) {
@@ -215,25 +220,42 @@ struct Node {
 				node->h_diff++;
 
 				if (node->h_diff>=2) {
-					if (node->right->h_diff==-1) node->right->rot_left();
+					if (node->right->h_diff==-1) {
+						node->right->rot_left();
+						assert(node->right->h_diff==1 || node->right->h_diff==2);
+					}
 					node=node->rot_right();
 
-					if (node->h_diff==0) r_inc = is_right;
+					if (rem && node->h_diff!=-1) r_inc=!is_right;
+					else if (!rem && node->h_diff==-1) r_inc=is_right;
 					else break;
-				} else if (node->h_diff>0) {
+				} else if (node->h_diff>0 && !rem) {
 					r_inc = is_right;
+				} else if (node->h_diff<=0 && rem) {
+					r_inc = !is_right;
+				} else {
+					break;
 				}
 			} else {
 				node->h_diff--;
 
 				if (node->h_diff<=-2) {
-					if (node->left->h_diff==1) node->left->rot_right();
+					if (node->left->h_diff==1) {
+						node->left->rot_right();
+						assert(node->left->h_diff==-1 || node->left->h_diff==-2);
+					}
+
 					node=node->rot_left();
 
-					if (node->h_diff==0) r_inc = is_right;
+					if (rem && node->h_diff!=1) r_inc=!is_right;
+					else if (!rem && node->h_diff==1) r_inc=is_right;
 					else break;
-				} else if (node->h_diff<0) {
+				} else if (node->h_diff<0 && !rem) {
 					r_inc = is_right;
+				} else if (node->h_diff>=0 && rem) {
+					r_inc = !is_right;
+				} else {
+					break;
 				}
 			}
 
@@ -243,14 +265,17 @@ struct Node {
 		return node;
 	}
 
-	Node* find(K const& fx) {
+	template<class Compare=std::less<K>>
+	Node* find(K const& fx, Compare cmp={}) {
 		Node* node = this;
+		bool eq;
 
 		while (true) {
 			bool lt = cmp(fx,node->x);
 			bool gt = cmp(node->x,fx);
+			eq = !lt && !gt;
 
-			if (node->left && (lt || (!gt && !cmp(fx,node->left->x) && !cmp(node->left->x,fx)))) {
+			if (node->left && lt) {
 				node = node->left.get();
 			} else if (gt && node->right) {
 				node = node->right.get();
@@ -259,32 +284,50 @@ struct Node {
 			}
 		}
 
+		if (eq) {
+			Node* next = node;
+			next = next->left.get();
+
+			while (next) {
+				while (next && !cmp(fx,next->x) && !cmp(next->x,fx)) {
+					node = next;
+					next = next->left.get();
+				}
+
+				while (next && cmp(next->x,fx)) {
+					next = next->right.get();
+				}
+			}
+		}
+
 		return node;
 	}
 
-	void insert_node(std::unique_ptr<Node>&& node) {
-		Node* res = find(node->x);
+	template<class Compare=std::less<K>>
+	void insert_node(std::unique_ptr<Node>&& node, Compare cmp={}) {
+		Node* res = find(node->x, cmp);
 
 		bool lt = cmp(node->x,res->x);
 		if (lt) {
 			res->left = std::move(node);
 			res->left->parent = res;
 
-			res->rebalance(false);
+			res->rebalance(false, false);
 		} else if (cmp(res->x,node->x) || !res->right) {
 			res->right = std::move(node);
 			res->right->parent = res;
 
-			res->rebalance(true);
+			res->rebalance(true, false);
 		} else {
-			res->right->insert_node(std::move(node));
+			res->right->insert_node(std::move(node), cmp);
 		}
 	}
 
+	template<class Compare=std::less<K>>
 	Node* insert(K&& ix, V&& iv, Compare ins_cmp={}) {
-		std::unique_ptr<Node> node = std::make_unique<Node>(std::move(ix), std::move(iv), ins_cmp);
+		std::unique_ptr<Node> node = std::make_unique<Node>(std::move(ix), std::move(iv));
 		Node* ret = node.get();
-		insert_node(std::move(node));
+		insert_node(std::move(node), ins_cmp);
 		return ret;
 	}
 
@@ -299,12 +342,8 @@ struct Node {
 		}
 
 		if (ret) {
-			ret->parent = ptr->parent;
-			ret->root = ptr->root;
-		}
-
-		if ((!right || !left) && parent) {
-			parent->rebalance(parent->left.get()==this);
+			ret->parent = parent;
+			ret->root = root;
 		}
 
 		if (left && right) {
@@ -342,9 +381,11 @@ struct Node {
 			ret->root = ptr->root;
 			ptr.swap(ret);
 
-			prev_parent->rebalance(left_child);
+			prev_parent->rebalance(left_child, true);
 		} else {
 			ptr.swap(ret);
+
+			if (parent) parent->rebalance(&parent->left==&ptr, true);
 		}
 
 		return ret;
@@ -362,6 +403,33 @@ struct Node {
 
 	Iterator iter_ref(Node* ref) {
 		return {.current=ref, .begin=this, .end=parent};
+	}
+
+	void swap_positions(Node* other) {
+		std::unique_ptr<Node>* pptr = parent_ptr();
+		std::unique_ptr<Node>* opptr = other->parent_ptr();
+		pptr->release();
+		opptr->release();
+
+		if (parent==other) {
+			if (pptr==&other->left) pptr=&left; else pptr=&right;
+		} else if (other->parent==this) {
+			if (opptr==&left) opptr=&other->left; else opptr=&other->right;
+		}
+
+		std::swap(left, other->left);
+		std::swap(right, other->right);
+		std::swap(parent, other->parent);
+		std::swap(root, other->root);
+		std::swap(h_diff, other->h_diff);
+
+		pptr->reset(other);
+		opptr->reset(this);
+
+		if (right) right->parent = this;
+		if (left) left->parent = this;
+		if (other->right) other->right->parent = other;
+		if (other->left) other->left->parent = other;
 	}
 
 //	Node merge(Node* other) {

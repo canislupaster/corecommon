@@ -406,18 +406,6 @@ struct Geometry {
 	~Geometry();
 
 	void render() const;
-	//xor stencil buffer
-	void render_stencil() const;
-};
-
-struct Wrapper {
-	bool moved=false;
-
-	Wrapper() {}
-
-	Wrapper(Wrapper&& other): moved(other.moved) {
-		other.moved=true;
-	}
 };
 
 class Window {
@@ -445,7 +433,8 @@ class Window {
 		bool load(const char* fname) {
 			try {
 #ifdef EMSCRIPTEN
-				cfg.parse(html_local_get(fname));
+				std::optional<std::string> cfgtxt = html_local_get(fname);
+				if (cfgtxt) cfg.parse(*cfgtxt);
 #else
 				cfg.parse(read_file(fname));
 #endif
@@ -481,12 +470,12 @@ class Window {
 
 	Options& opts;
 
-	std::optional<TexShader<Mat3>> passthrough;
-	std::optional<Geometry> full_rect;
+	std::shared_ptr<TexShader<Mat3>> passthrough;
+	std::shared_ptr<Geometry> full_rect;
 	//LateInitialize<Geometry> full_rect;
 
 	GLuint tex_fbo;
-	std::optional<UniformBuffer<Mat4, Mat4>> object_ubo;
+	std::shared_ptr<UniformBuffer<Mat4, Mat4>> object_ubo;
 	Layer* in_use;
 
 	bool swapped;
@@ -514,7 +503,6 @@ template<class TexShader>
 void Texture::proc(TexShader const& shad, Texture& out, typename TexShader::Tuple const& params) const {
 	glBindFramebuffer(GL_FRAMEBUFFER, wind.tex_fbo);
 	glViewport(0,0,static_cast<int>(out.size[0]),static_cast<int>(out.size[1]));
-
 
 	GLenum target =
 #ifndef GLES

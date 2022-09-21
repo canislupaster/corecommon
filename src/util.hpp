@@ -270,7 +270,7 @@ class VarIntRef {
 std::string read_file(const char* path);
 
 #ifdef EMSCRIPTEN
-static std::string html_local_get(char const* name) {
+static std::optional<std::string> html_local_get(char const* name) {
 	char* str = reinterpret_cast<char*>(MAIN_THREAD_EM_ASM_INT({
 		let v = window.localStorage.getItem(UTF8ToString($0));
 		if (v==null) return 0;
@@ -281,9 +281,13 @@ static std::string html_local_get(char const* name) {
 		return buf;
 	}, name));
 
-	std::string cpy(str);
-	free(str);
-	return cpy;
+	if (str) {
+		std::string cpy(str);
+		free(str);
+		return std::make_optional(cpy);
+	} else {
+		return std::optional<std::string>();
+	}
 }
 
 static void html_local_set(char const* name, char const* val) {
