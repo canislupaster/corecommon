@@ -78,7 +78,7 @@ Window::Window(const char *name, Options& opts): swapped(false), opts(opts), nam
 	glBindFramebuffer(GL_FRAMEBUFFER, tex_fbo);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	passthrough = std::make_shared<TexShader<Mat3>>(std::shared_ptr<VertShader>(new VertShader(
+	passthrough = std::make_shared<TexShader<Mat2>>(std::shared_ptr<VertShader>(new VertShader(
 #include "./include/passthrough.vert"
 	)), std::shared_ptr<FragShader>(new FragShader(
 #include "./include/tex.frag"
@@ -199,7 +199,7 @@ Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.
 #else
 Texture::Texture(Texture const& other): Texture(other.wind, other.format, other.size, false) {
 #endif
-	other.proc(*wind.passthrough, *this, std::tuple(Mat3(1)));
+	other.proc(*wind.passthrough, *this, std::tuple(Mat2(1)));
 }
 
 #ifndef GLES

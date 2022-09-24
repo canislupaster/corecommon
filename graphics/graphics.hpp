@@ -221,20 +221,20 @@ struct Shader {
 
 	template<size_t i, class ...UseUniforms>
 	struct UseUniformIterator {
-		void use(GLint const* const uniform_location, Tuple tup) { }
+		void use(GLint const* const uniform_location, Tuple const& tup) { }
 	};
 
 	template<size_t i, class UniformType, class ...UseUniforms>
 	struct UseUniformIterator<i, UniformType, UseUniforms...> {
-		void use(GLint const* const uniform_location, Tuple tup) {
+		void use(GLint const* const uniform_location, Tuple const& tup) {
 			Uniform<UniformType>::use(std::get<i>(tup), *uniform_location);
-			UseUniformIterator<i-1, UseUniforms...>().use(uniform_location+1, tup);
+			UseUniformIterator<i+1, UseUniforms...>().use(uniform_location+1, tup);
 		}
 	};
 
 	void use(std::tuple<Uniforms...> const& uniforms) const {
 		glUseProgram(prog);
-		UseUniformIterator<sizeof...(Uniforms)-1, Uniforms...>().use(uniform_locations.begin(), uniforms);
+		UseUniformIterator<0, Uniforms...>().use(uniform_locations.begin(), uniforms);
 	}
 
 	~Shader() {
@@ -470,7 +470,7 @@ class Window {
 
 	Options& opts;
 
-	std::shared_ptr<TexShader<Mat3>> passthrough;
+	std::shared_ptr<TexShader<Mat2>> passthrough;
 	std::shared_ptr<Geometry> full_rect;
 	//LateInitialize<Geometry> full_rect;
 
