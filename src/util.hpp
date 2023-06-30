@@ -295,8 +295,6 @@ static void html_local_set(char const* name, char const* val) {
 }
 #endif
 
-unsigned gcd(unsigned a, unsigned b);
-unsigned lcm(unsigned a, unsigned b);
 size_t binomial(size_t n, size_t k);
 
 char hexchar(char hex);

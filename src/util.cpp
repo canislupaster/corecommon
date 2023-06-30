@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <string>
+#include <tgmath.h>
 
 //kinda copied from https://nachtimwald.com/2017/09/24/hex-encode-and-decode-in-c/
 //since im too lazy to type all these ifs
@@ -137,20 +138,6 @@ std::string read_file(const char* path) {
 	file.open(path);
 
 	return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-}
-
-unsigned gcd(unsigned a, unsigned b) {
-	while (true) {
-		a %= b;
-		if (a==0) return b;
-		b %= a;
-		if (b==0) return a;
-	}
-}
-
-unsigned lcm(unsigned a, unsigned b) {
-	unsigned x = gcd(a,b);
-	return (a*b)/x;
 }
 
 size_t binomial(size_t n, size_t k) {

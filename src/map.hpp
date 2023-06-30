@@ -20,7 +20,7 @@
 template<class K, class V, bool multiple=false, template<class> class Allocator = std::allocator>
 class Map {
  public:
-	unsigned count;
+	size_t count;
 	using Bucket = std::pair<K, V>;
 
 	Map() {
@@ -29,7 +29,13 @@ class Map {
 	}
 
 	Map(unsigned cap): count(0) {
-		resize(cap);
+		unsigned sz=0;
+		for (; (1<<sz)<=cap; sz++);
+		resize((1<<(sz+1)));
+	}
+
+	Map(std::initializer_list<std::pair<K,V>> init): Map() {
+		for (auto [k,v]: init) insert(k,v);
 	}
 
 	V* operator[](K const& k) {
@@ -38,7 +44,7 @@ class Map {
 	}
 
 	V const* operator[](K const& k) const {
-		return const_cast<Map&>(*this).find(k);
+		return const_cast<Map&>(*this)[k];
 	}
 
 	std::optional<V> insert(K k, V v) {
@@ -49,16 +55,18 @@ class Map {
 
 		Bucket* bucket;
 		if (multiple) {
-			while (!(bucket = p.insert(k))) ++p;
+			while (!(bucket = p.insert())) ++p;
+			count++;
 		} else {
 			while (true) {
 				MatchResult res = p.match(k);
 				if ((bucket=res.match)) {
-					V copy = bucket->second;
+					V copy = std::move(bucket->second);
 					bucket->second = v;
-					return std::optional(copy);
+					return std::make_optional<V>(std::move(copy));
 				} else if (!res.cont) {
-					bucket=p.insert(k);
+					bucket=p.insert();
+					count++;
 					break;
 				}
 
@@ -79,14 +87,16 @@ class Map {
 
 		Bucket* bucket;
 		if (multiple) {
-			while (!(bucket = p.insert(k))) ++p;
+			while (!(bucket = p.insert())) ++p;
+			count++;
 		} else {
 			while (true) {
 				MatchResult res = p.match(k);
 				if ((bucket=res.match)) {
 					return bucket->second;
 				} else if (!res.cont) {
-					bucket=p.insert(k);
+					bucket=p.insert();
+					count++;
 					break;
 				}
 
@@ -103,9 +113,10 @@ class Map {
 		Probe p = Probe(*this, h);
 
 		while (true) {
-			MatchResult res = p.remove(k);
+			MatchResult res = p.match(k);
 
 			if (res.match) {
+				p.remove();
 				return std::optional(res.match->second);
 			} else if (!res.cont) {
 				break;
@@ -268,11 +279,10 @@ class Map {
 			return res;
 		}
 
-		Bucket* insert(K& k) {
+		Bucket* insert() {
 			for (c=0; c<NUM_CONTROL_BYTES; c++) {
 				if (current[c]==0 || current[c]==SENTINEL) {
 					current[c] = target;
-					map.count++;
 					return &map.buckets[i*NUM_CONTROL_BYTES+c];
 				}
 			}
@@ -280,26 +290,9 @@ class Map {
 			return nullptr;
 		}
 
-		MatchResult remove(K& k) {
-			MatchResult res = {.cont=true, .match=nullptr};
-
-			for (; c<NUM_CONTROL_BYTES; c++) {
-				if (current[c]==target) {
-					Bucket* bucket = &map.buckets[i*NUM_CONTROL_BYTES+c];
-					if (bucket->first==k) {
-						current[c] = SENTINEL;
-						map.count--;
-						res.match=bucket;
-						break;
-					}
-				}
-
-				if (res.cont && !current[c]) {
-					res.cont=false;
-				}
-			}
-
-			return res;
+		void remove() {
+			current[c] = SENTINEL;
+			map.count--;
 		}
 	};
 
@@ -312,10 +305,8 @@ class Map {
 
 		buckets.resize(to*NUM_CONTROL_BYTES);
 
-		bool full=false;
-		for (unsigned i=0; i<std::min(prev_sz, to-prev_sz) || full; i++) {
+		for (unsigned i=0; i<prev_sz; i++) {
 			ControlBytes& control = control_bytes[i];
-			full=true;
 
 			for (unsigned char c=0; c<NUM_CONTROL_BYTES; c++) {
 				if (control[c]==SENTINEL) continue;
@@ -324,19 +315,17 @@ class Map {
 					Bucket& bucket = buckets[i*NUM_CONTROL_BYTES+c];
 					size_t h = do_hash(bucket.first);
 
-					if ((h>>8)%to != (h>>8)%prev_sz) {
+					if ((h>>8)%to >= prev_sz) {
 						control[c] = SENTINEL;
 
 						Probe p(*this, h);
 						Bucket* insertion;
 
-						while (!(insertion=p.insert(bucket.first)))
+						while ((insertion=p.insert())==nullptr)
 							++p;
 
 						*insertion = bucket;
 					}
-				} else if (full) {
-					full=false;
 				}
 			}
 		}
@@ -354,12 +343,11 @@ class Map {
 		struct Cursor {
 			Probe probe;
 			K const& k;
-			size_t h;
 		};
 
 		std::optional<Cursor> cursor;
 
-		FindIterator(Map& map, K const& k, size_t h): cursor({.probe=Probe(map, h), .k=k, .h=h}) {
+		FindIterator(Map& map, K const& k, size_t h): cursor({.probe=Probe(map, h), .k=k}) {
 			++*this;
 		}
 
@@ -370,37 +358,38 @@ class Map {
 		using pointer = V*;
 		using reference = V&;
 
-		Bucket* bucket;
+		Bucket* bucket=nullptr;
 
-		FindIterator() = default;
+		FindIterator() {}
 		FindIterator(Map& map, K const& k): FindIterator(map, k, do_hash(k)) { }
 
-		static FindIterator end() {
-			FindIterator iter;
-			iter.bucket=nullptr;
-			return iter;
-		}
-
 		void operator++() {
-			while (true) {
-				MatchResult res = cursor->probe.match(cursor->k);
+			if (bucket) ++cursor->probe;
+
+			MatchResult res;
+			do {
+				res = cursor->probe.match(cursor->k);
+
 				if (res.match) {
 					bucket=res.match;
-					return;
-				} else if (!res.cont) {
-					bucket=nullptr;
 					return;
 				}
 
 				++cursor->probe;
-			}
+			} while (res.cont);
+
+			bucket=nullptr;
 		}
 
-		bool operator==(FindIterator& other) const {
+		void remove() {
+			cursor->probe.remove();
+		}
+
+		bool operator==(FindIterator const& other) const {
 			return other.bucket==bucket;
 		}
 
-		bool operator!=(FindIterator& other) const {
+		bool operator!=(FindIterator const& other) const {
 			return other.bucket!=bucket;
 		}
 
@@ -418,7 +407,7 @@ class Map {
 	}
 
 	static FindIterator find_end() {
-		return FindIterator::end();
+		return FindIterator();
 	}
 
 	struct Iterator {
@@ -430,12 +419,12 @@ class Map {
 
 		size_t c;
 		typename std::vector<ControlBytes, ControlBytesAllocator>::iterator iter;
-		std::vector<Bucket, BucketAllocator>& buckets;
+		Map& map;
 
 		void operator++() {
-			if (++c % NUM_CONTROL_BYTES == 0) ++iter; //ha! c++! geddit?!1
+			if (++c % NUM_CONTROL_BYTES == 0 && c!=0) ++iter;
 
-			while (c<buckets.size()) {
+			while (c<map.buckets.size()) {
 				do {
 					if ((*iter)[c%NUM_CONTROL_BYTES]!=0 && (*iter)[c%NUM_CONTROL_BYTES]!=SENTINEL) {
 						return;
@@ -454,12 +443,17 @@ class Map {
 			return c!=other.c;
 		}
 
-		std::pair<K,V>& operator*() {
-			return buckets[c];
+		void remove() {
+			(*iter)[c%NUM_CONTROL_BYTES] = SENTINEL;
+			map.count--;
 		}
 
-		std::pair<K,V>& operator->() {
-			return buckets[c];
+		std::pair<K,V>& operator*() {
+			return map.buckets[c];
+		}
+
+		std::pair<K,V>* operator->() {
+			return &map.buckets[c];
 		}
 	};
 
@@ -473,12 +467,12 @@ class Map {
 
 		size_t c;
 		typename std::vector<ControlBytes, ControlBytesAllocator>::const_iterator iter;
-		std::vector<Bucket, BucketAllocator> const& buckets;
+		Map const& map;
 
 		void operator++() {
-			if (++c % NUM_CONTROL_BYTES == 0) ++iter; //ha! c++! geddit?!1
+			if (++c % NUM_CONTROL_BYTES == 0 && c!=0) ++iter; //ha! c++! geddit?!1
 
-			while (c<buckets.size()) {
+			while (c<map.buckets.size()) {
 				do {
 					if ((*iter)[c%NUM_CONTROL_BYTES]!=0 && (*iter)[c%NUM_CONTROL_BYTES]!=SENTINEL) {
 						return;
@@ -498,28 +492,37 @@ class Map {
 		}
 
 		std::pair<K,V> const& operator*() {
-			return buckets[c];
+			return map.buckets[c];
 		}
 
-		std::pair<K,V> const& operator->() {
-			return buckets[c];
+		std::pair<K,V> const* operator->() {
+			return &map.buckets[c];
 		}
 	};
 
 	Iterator begin() {
-		return {.c=0, .iter=control_bytes.begin(), .buckets=buckets};
+		Iterator x = {.c=static_cast<size_t>(-1), .iter=control_bytes.begin(), .map=*this};
+		++x;
+		return x;
 	}
 
 	Iterator end() {
-		return {.c=buckets.size(), .iter=control_bytes.end(), .buckets=buckets};
+		return {.c=buckets.size(), .iter=control_bytes.end(), .map=*this};
+	}
+
+	void clear() {
+		auto it = begin(), to=end();
+		for (; it!=to; ++it) it.remove();
 	}
 
 	ConstIterator begin() const {
-		return {.c=0, .iter=control_bytes.begin(), .buckets=buckets};
+		ConstIterator x = {.c=static_cast<size_t>(-1), .iter=control_bytes.begin(), .map=*this};
+		++x;
+		return x;
 	}
 
 	ConstIterator end() const {
-		return {.c=buckets.size(), .iter=control_bytes.end(), .buckets=buckets};
+		return {.c=buckets.size(), .iter=control_bytes.end(), .map=*this};
 	}
 };
 

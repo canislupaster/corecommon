@@ -75,6 +75,8 @@ if (server)
     target_link_libraries(fileserver PUBLIC corecommon server)
 endif()
 
+list(APPEND TESTS tests/maptest2.cpp)
+
 foreach(TEST ${TESTS})
     get_filename_component(NAME ${TEST} NAME_WLE)
     add_executable(${NAME} ${TEST})

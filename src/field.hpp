@@ -486,7 +486,7 @@ struct TriangularMatrix {
 
 			for (unsigned y=0; y<x; y++) {
 				float coeff=0;
-				for (unsigned x2=x-1; x2>=y; x2--) {
+				for (int x2=x-1; x2>=y; x2--) {
 					coeff += inverse[x2][y]*vals[x][y];
 				}
 
