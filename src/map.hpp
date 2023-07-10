@@ -165,13 +165,13 @@ class Map {
 
 	class Probe {
 	 public:
-		unsigned probe_i;
+		Map& map;
+
 		unsigned i;
 		unsigned char* current;
+		unsigned probe_i;
 		unsigned char c;
 		unsigned char target;
-		//EEEEEEE this is just like C AAAAAAA
-		Map& map;
 
 		bool cont;
 #ifdef __SSE__
