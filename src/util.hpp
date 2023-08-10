@@ -98,7 +98,7 @@ template<class T>
 struct LazyInitialize {
 	std::optional<T> t;
 	std::function<T()> init;
-	explicit LazyInitialize(std::function<T()> initializer): t(), init(initializer) {}
+	explicit constexpr LazyInitialize(std::function<T()> initializer): t(), init(initializer) {}
 
 	T& operator*() {
 		if (!t) {
@@ -109,7 +109,7 @@ struct LazyInitialize {
 	}
 
 	T* operator->() {
-		return &*this;
+		return &*(*this);
 	}
 };
 
